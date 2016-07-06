@@ -1,2 +1,5 @@
 *.pyc
 *.pyo
+build/*
+dist/*
+eoxs_wps_async.egg-info/*
