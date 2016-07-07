@@ -55,6 +55,11 @@ def error(message, *args):
     print >>stderr, "ERROR: %s" % (message % args)
 
 
+def info(message, *args):
+    """ Print error message. """
+    print >>stderr, "INFO: %s" % (message % args)
+
+
 def usage(exename):
     """ Print simple usage. """
     print >>stderr, (
@@ -216,6 +221,7 @@ class Daemon(object):
                 *self.socket_args, **self.socket_kwargs
             )
             # start handling new connections
+            info("Daemon is listening to new connections ...")
             while True:
                 ConnectionHandler(
                     self.request_handler,
@@ -246,6 +252,7 @@ class Daemon(object):
         for item in list(self.connection_handlers):
             item.join()
         self.logger.info("Daemon stopped.")
+        info("Daemon is stopped.")
 
     def terminate(self, signum=None, frame=None):
         # pylint: disable=unused-argument
@@ -304,7 +311,8 @@ def main(argv):
     # kick in logger
     # initialize Django
     logger = getLogger(LOGGER_NAME)
-    logger.info("Daemon initialized.")
+    logger.info("Daemon is initialized.")
+    info("Daemon is initialized.")
 
     # load configuration
     conf = get_wps_config()
