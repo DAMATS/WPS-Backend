@@ -1,6 +1,6 @@
 #-------------------------------------------------------------------------------
 #
-# The actual implementation of the AsyncBackendInterface EOxServer component.
+# The execution handlers
 #
 # Project: asynchronous WPS back-end
 # Authors: Martin Paces <martin.paces@eox.at>
@@ -27,42 +27,38 @@
 # THE SOFTWARE.
 #-------------------------------------------------------------------------------
 # pylint: disable=unused-argument, too-many-arguments, too-many-locals
-# pylint: disable=unused-variable, too-few-public-methods, no-self-use
 
 import re
-from uuid import uuid4
 from logging import getLogger
 from os.path import join, isdir
 from shutil import rmtree
 from urlparse import urljoin
 
-from eoxserver.core import Component, implements
-from eoxserver.services.ows.wps.interfaces import AsyncBackendInterface
 from eoxserver.services.ows.wps.context import Context
-from eoxserver.services.ows.wps.exceptions import ServerBusy, NoApplicableCode
+from eoxserver.services.ows.wps.v10.encoders import (
+    WPS10ExecuteResponseXMLEncoder,
+)
+from eoxserver.services.ows.wps.util import (
+    parse_params, InMemoryURLResolver,
+    decode_raw_inputs, decode_output_requests, pack_outputs,
+)
 
 from eoxs_wps_async.util import cached_property, fix_dir, JobLoggerAdapter
 from eoxs_wps_async.config import get_wps_config
-from eoxs_wps_async.client import Client
 
-LOGGER_NAME = "eoxserver.services.ows.wps.client"
-RESPONSE_FILE = "executeResponse.xml"
+LOGGER_NAME = "eoxserver.services.ows.wps"
 RE_JOB_ID = re.compile(r'^[A-Za-z0-9_.-]+$')
+RESPONSE_FILE = "executeResponse.xml"
 
-
-class WPSAsyncBackendBase(Component):
+class Handler(object):
     """ Simple testing WPS fake asynchronous back-end. """
-    implements(AsyncBackendInterface)
-    supported_versions = ("1.0.0",)
+    encoder = WPS10ExecuteResponseXMLEncoder()
 
     @cached_property
     def conf(self):
+        # pylint: disable=no-self-use
         """ Get configuration. """
         return get_wps_config()
-
-    def get_logger(self, job_id):
-        """ Custom logger. """
-        return JobLoggerAdapter(getLogger(LOGGER_NAME), {'job_id': job_id})
 
     @staticmethod
     def check_job_id(job_id):
@@ -70,6 +66,11 @@ class WPSAsyncBackendBase(Component):
         if not (isinstance(job_id, basestring) and RE_JOB_ID.match(job_id)):
             raise ValueError("Invalid job identifier %r!" % job_id)
         return job_id
+
+    @staticmethod
+    def get_logger(job_id):
+        """ Custom logger. """
+        return JobLoggerAdapter(getLogger(LOGGER_NAME), {'job_id': job_id})
 
     def get_context(self, job_id, path_perm_exists=False, logger=None):
         """ Get context for the given job_id. """
@@ -81,36 +82,50 @@ class WPSAsyncBackendBase(Component):
             path_perm_exists=path_perm_exists,
         )
 
-    @property
-    def client(self):
-        """ Get connection to the execution daemon. """
-        return Client(
-            self.conf.socket_file,
-            self.conf.socket_connection_timeout,
-        )
+    def update_reponse(self, context, encoded_response, logger):
+        """ Update the execute response. """
+        with open(RESPONSE_FILE, 'wb') as fobj:
+            fobj.write(
+                self.encoder.serialize(encoded_response, encoding='utf-8')
+            )
+        path, url = context.publish(RESPONSE_FILE)
+        logger.info("Response updated.")
+        return path, url
 
-    def execute(self, process, raw_inputs, resp_form, extra_parts=None,
-                job_id=None, version="1.0.0", **kwargs):
+
+    def execute(self, job_id, process, raw_inputs, resp_form, extra_parts):
         """ Asynchronous process execution. """
-        job_id = self.check_job_id(job_id or str(uuid4()))
+        self.check_job_id(job_id)
         logger = self.get_logger(job_id)
 
-        with self.client as client:
-            client.send((
-                "EXECUTE", job_id, (process, raw_inputs, resp_form, extra_parts)
-            ))
-            response = client.recv()
+        with self.get_context(job_id, False, logger) as context:
+            self.update_reponse(context, self.encoder.encode_accepted(
+                #TODO: Fix the lineage output.
+                process, resp_form, {}, raw_inputs, self.get_response_url(job_id)
+            ), logger)
 
-        if response[0] == "OK":
-            return job_id
-        elif response[0] == "BUSY":
-            raise ServerBusy("The server is busy!")
-        elif response[0] == "ERROR":
-            raise NoApplicableCode(response[1], "eoxs_wps_async.daemon")
-        else:
-            message = "Unknown response! RESP=%r" % response[0]
-            logger.error(message)
-            raise ValueError(message)
+        # following core will be performed by the worker process
+        with self.get_context(job_id, True, logger) as context:
+            # convert process's input/output definitions to a common format
+            input_defs = parse_params(process.inputs)
+            output_defs = parse_params(process.outputs)
+
+            # prepare inputs passed to the process execution subroutine
+            inputs = {"context": context}
+            inputs.update(decode_output_requests(resp_form, output_defs))
+            inputs.update(decode_raw_inputs(
+                raw_inputs, input_defs, InMemoryURLResolver(extra_parts, logger)
+            ))
+
+            # execute the process
+            outputs = process.execute(**inputs)
+
+            # pack the outputs
+            packed_outputs = pack_outputs(outputs, resp_form, output_defs)
+
+            self.update_reponse(context, self.encoder.encode_response(
+                process, packed_outputs, resp_form, inputs, raw_inputs
+            ), logger)
 
     def get_response_url(self, job_id):
         """ Return response URL for the given job identifier. """
