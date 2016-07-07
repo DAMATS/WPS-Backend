@@ -106,26 +106,36 @@ class Handler(object):
 
         # following core will be performed by the worker process
         with self.get_context(job_id, True, logger) as context:
-            # convert process's input/output definitions to a common format
-            input_defs = parse_params(process.inputs)
-            output_defs = parse_params(process.outputs)
+            try:
+                # convert process's input/output definitions to a common format
+                input_defs = parse_params(process.inputs)
+                output_defs = parse_params(process.outputs)
 
-            # prepare inputs passed to the process execution subroutine
-            inputs = {"context": context}
-            inputs.update(decode_output_requests(resp_form, output_defs))
-            inputs.update(decode_raw_inputs(
-                raw_inputs, input_defs, InMemoryURLResolver(extra_parts, logger)
-            ))
+                # prepare inputs passed to the process execution subroutine
+                inputs = {"context": context}
+                inputs.update(decode_output_requests(resp_form, output_defs))
+                inputs.update(decode_raw_inputs(
+                    raw_inputs, input_defs, InMemoryURLResolver(extra_parts, logger)
+                ))
 
-            # execute the process
-            outputs = process.execute(**inputs)
+                # execute the process
+                outputs = process.execute(**inputs)
 
-            # pack the outputs
-            packed_outputs = pack_outputs(outputs, resp_form, output_defs)
+                # pack the outputs
+                packed_outputs = pack_outputs(outputs, resp_form, output_defs)
 
-            self.update_reponse(context, self.encoder.encode_response(
-                process, packed_outputs, resp_form, inputs, raw_inputs
-            ), logger)
+                response = self.encoder.encode_response(
+                    process, packed_outputs, resp_form, inputs, raw_inputs,
+                    self.get_response_url(job_id)
+                )
+
+            except Exception as exception: # pylint: disable=broad-except
+                response = self.encoder.encode_failed(
+                    process, exception, resp_form, inputs, raw_inputs,
+                    self.get_response_url(job_id)
+                )
+
+            self.update_reponse(context, response, logger)
 
     def get_response_url(self, job_id):
         """ Return response URL for the given job identifier. """
