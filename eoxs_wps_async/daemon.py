@@ -38,7 +38,7 @@ from datetime import datetime
 
 from traceback import format_exc
 from socket import error as SocketError
-from signal import SIGINT, SIGTERM, signal
+from signal import SIGINT, SIGTERM, signal, SIG_IGN
 from threading import Thread, Semaphore, Event
 import multiprocessing.util as mp_util
 from multiprocessing import Semaphore as ProcessSemaphore, Pool as ProcessPool
@@ -78,6 +78,12 @@ def set_stream_handler(logger, level=DEBUG):
     handler.setFormatter(formatter)
     logger.addHandler(handler)
     logger.setLevel(level)
+
+
+def init_worker():
+    """ Process pool initialization. """
+    # ignore SIGINT in the worker processes
+    signal(SIGINT, SIG_IGN)
 
 
 class WorkerPoolManager(Thread):
@@ -264,9 +270,10 @@ class Daemon(object):
 
         # set verbose multi-processes debugging
         set_stream_handler(mp_util.get_logger())
-        mp_util.get_logger().setLevel(mp_util.DEBUG)
+        mp_util.get_logger().setLevel(mp_util.SUBWARNING)
         worker_semaphore = ProcessSemaphore(num_workers)
-        self.worker_pool = ProcessPool(num_workers)
+
+        self.worker_pool = ProcessPool(num_workers, init_worker)
         self.worker_pool_manager = WorkerPoolManager(
             self.worker_pool, worker_semaphore, self.job_queue
         )
@@ -308,32 +315,36 @@ class Daemon(object):
 
     def cleanup(self):
         """ Perform the final clean-up. """
-        if self.socket_listener is not None:
-            self.logger.info("Stopping daemon ...")
+        # avoid repeated clean-up
+        if getattr(self, '_cleanedup', False):
+            return
+        self._cleanedup = True
+
+        message = "Stopping daemon ..."
+        self.logger.info(message)
+        info(message)
+
+        # terminate threads and processes
+        if self.socket_listener:
             self.socket_listener.close()
-            self.socket_listener = None
+        self.worker_pool_manager.stop()
+        self.worker_pool.terminate()
+        for item in list(self.connection_handlers):
+            item.stop()
 
-            # politely ask threads to stop
-            for item in list(self.connection_handlers):
-                item.stop()
-            # wait for the pending threads
-            for item in list(self.connection_handlers):
-                item.join()
-            self.logger.info("Daemon stopped.")
-            info("Daemon is stopped.")
+        # join the pending threads
+        self.worker_pool_manager.join()
+        self.worker_pool.join()
+        for item in list(self.connection_handlers):
+            item.join()
 
-        # terminate the worker pool manager
-        if self.worker_pool_manager:
-            self.worker_pool_manager.stop()
-            self.worker_pool_manager.join()
-            self.worker_pool_manager = None
+        self.socket_listener = None
+        self.worker_pool_manager = None
+        self.worker_pool = None
 
-        # terminate worker processes
-        if self.worker_pool:
-            #self.worker_pool.close()
-            self.worker_pool.terminate()
-            self.worker_pool.join()
-            #self.worker_pool = None
+        message = "Daemon stopped."
+        self.logger.info(message)
+        info(message)
 
 
     def terminate(self, signum=None, frame=None):
