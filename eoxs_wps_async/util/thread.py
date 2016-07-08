@@ -1,6 +1,6 @@
 #-------------------------------------------------------------------------------
 #
-# threading utilities 
+# threading utilities
 #
 # Project: asynchronous WPS back-end
 # Authors: Martin Paces <martin.paces@eox.at>
@@ -27,8 +27,9 @@
 # THE SOFTWARE.
 #-------------------------------------------------------------------------------
 
-from threading import Lock
+from threading import Lock, Condition
 from functools import wraps
+from collections import deque
 
 def locked(func, lockname='_lock'):
     """ Thread-locking object method decorator. """
@@ -61,3 +62,73 @@ class ThreadSet(object):
         """ Iterate all items in the set. """
         for item in self._tset:
             yield item
+
+
+class Queue(object):
+    """ Simple thread-safe FIFO queue. """
+
+    class Empty(Exception):
+        """ Empty queue exception. """
+        pass
+
+    class Full(Exception):
+        """ Full queue exception. """
+        pass
+
+    def __init__(self, maxsize=1, timeout=1.0):
+        self._items = deque()
+        self._lock = Lock()
+        self._cond = Condition(self._lock)
+        self.maxsize = maxsize
+        self.timeout = timeout
+
+    @locked
+    def put(self, item):
+        """ Insert item into the queue. """
+        if len(self._items) >= self.maxsize:
+            raise self.Full
+        self._items.append(item)
+        self._cond.notify()
+
+    @locked
+    def get(self):
+        """ Get item from the queue or wait until there is one.
+        The subroutine may raise Empty if the time-out is reached.
+        """
+        if not self._items:
+            self._cond.wait(self.timeout)
+            if not self._items:
+                raise self.Empty
+        return self._items.popleft()
+
+    @locked
+    def filter(self, cond):
+        """ Get list of all items matching the given condition. """
+        return [item for item in self._items if cond(item)]
+
+    @locked
+    def remove(self, cond):
+        """ Remove all the items matching the given condition. """
+        new_items = deque()
+        removed_items = []
+        for item in self._items:
+            if cond(item):
+                removed_items.append(item)
+            else:
+                new_items.append(item)
+        self._items = new_items
+        return removed_items
+
+    @locked
+    def __len__(self):
+        return len(self._items)
+
+    @property
+    @locked
+    def items(self):
+        """ Get snapshot of the items. """
+        return list(self._items)
+
+    def __iter__(self):
+        """ Non-blocking iteration over a snapshot of the queue items. """
+        return iter(self.items)

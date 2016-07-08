@@ -27,8 +27,11 @@
 # THE SOFTWARE.
 #-------------------------------------------------------------------------------
 
-from eoxserver.core.decoders import config
+from eoxserver.core.decoders.config import Reader, Option
 from eoxserver.core.config import get_eoxserver_config
+
+# maximum allowed time out value in seconds
+MAX_TIME_OUT = 3600.0 # 1 hour
 
 # default maximum number of simultaneous connections
 DEF_MAX_CONNECTIONS = 128
@@ -39,26 +42,73 @@ DEF_CONNECTION_TIMEOUT = 10.0
 # default socket polling time-out in seconds
 DEF_POLL_TIMEOUT = 1.0
 
+# default number of parallel workers
+DEF_NUMBER_OF_WORKERS = 1
 
-class WPSConfigReader(config.Reader):
+# default allowed maximum of queued jobs
+DEF_MAX_QUEUED_JOBS = 64
+
+
+def positive_int(value):
+    """ Positive integer parser """
+    value = int(value)
+    if value > 0:
+        return value
+    raise ValueError("Not a positive integer!")
+
+
+def positive_float_range(min_value, max_value):
+    """ Positive integer parser """
+    def _positive_float_range_(value):
+        value = float(value)
+        if min_value <= value <= max_value:
+            if value > 0:
+                return value
+            else:
+                raise ValueError("Not a positive float!")
+        else:
+            raise ValueError(
+                "Float value is in the allowed range [%g, %g]!" %
+                (min_value, max_value)
+            )
+    return _positive_float_range_
+
+
+class WPSConfigReader(Reader):
     # pylint: disable=too-few-public-methods
     """ WPS backend configuration reader. """
     section = "services.ows.wps"
-    path_temp = config.Option(required=True)
-    path_perm = config.Option(required=True)
-    url_base = config.Option(required=True)
-    socket_file = config.Option(required=True)
-    socket_max_connections = config.Option(
-        type=int, default=DEF_MAX_CONNECTIONS
+    path_temp = Option(required=True)
+    path_perm = Option(required=True)
+    url_base = Option(required=True)
+    socket_file = Option(required=True)
+    socket_max_connections = Option(
+        type=positive_int, default=DEF_MAX_CONNECTIONS
     )
-    socket_connection_timeout = config.Option(
-        type=float, default=DEF_CONNECTION_TIMEOUT
+    socket_connection_timeout = Option(
+        type=positive_float_range(0.0, MAX_TIME_OUT),
+        default=DEF_CONNECTION_TIMEOUT
     )
-    socket_poll_timeout = config.Option(
-        type=float, default=DEF_POLL_TIMEOUT
+    socket_poll_timeout = Option(
+        type=positive_float_range(0.0, MAX_TIME_OUT), default=DEF_POLL_TIMEOUT
+    )
+    num_workers = Option(
+        type=positive_int, default=DEF_NUMBER_OF_WORKERS
+    )
+    max_queued_jobs = Option(
+        type=positive_int, default=DEF_MAX_QUEUED_JOBS
     )
 
 
+_WPS_CONFIG = None
 def get_wps_config(config=None):
+    """ Get WPS configuration. """
+    global _WPS_CONFIG # pylint: disable=global-statement
+    if not _WPS_CONFIG:
+        _WPS_CONFIG = load_wps_config(config)
+    return _WPS_CONFIG
+
+
+def load_wps_config(config=None):
     """ Get WPS configuration. """
     return WPSConfigReader(config or get_eoxserver_config())

@@ -1,6 +1,6 @@
 #-------------------------------------------------------------------------------
 #
-# The execution handlers
+# The WPS back-end low level handlers and their utilities
 #
 # Project: asynchronous WPS back-end
 # Authors: Martin Paces <martin.paces@eox.at>
@@ -43,69 +43,82 @@ from eoxserver.services.ows.wps.util import (
     decode_raw_inputs, decode_output_requests, pack_outputs,
 )
 
-from eoxs_wps_async.util import cached_property, fix_dir, JobLoggerAdapter
+from eoxs_wps_async.util import fix_dir, JobLoggerAdapter
 from eoxs_wps_async.config import get_wps_config
 
 LOGGER_NAME = "eoxserver.services.ows.wps"
 RE_JOB_ID = re.compile(r'^[A-Za-z0-9_.-]+$')
 RESPONSE_FILE = "executeResponse.xml"
 
-class Handler(object):
-    """ Simple testing WPS fake asynchronous back-end. """
-    encoder = WPS10ExecuteResponseXMLEncoder()
 
-    @cached_property
-    def conf(self):
-        # pylint: disable=no-self-use
-        """ Get configuration. """
-        return get_wps_config()
+ENCODER = WPS10ExecuteResponseXMLEncoder()
 
-    @staticmethod
-    def check_job_id(job_id):
-        """ Check job id """
-        if not (isinstance(job_id, basestring) and RE_JOB_ID.match(job_id)):
-            raise ValueError("Invalid job identifier %r!" % job_id)
-        return job_id
+def check_job_id(job_id):
+    """ Check job id """
+    if not (isinstance(job_id, basestring) and RE_JOB_ID.match(job_id)):
+        raise ValueError("Invalid job identifier %r!" % job_id)
+    return job_id
 
-    @staticmethod
-    def get_logger(job_id):
-        """ Custom logger. """
-        return JobLoggerAdapter(getLogger(LOGGER_NAME), {'job_id': job_id})
 
-    def get_context(self, job_id, path_perm_exists=False, logger=None):
-        """ Get context for the given job_id. """
-        return Context(
-            join(self.conf.path_temp, job_id),
-            join(self.conf.path_perm, job_id),
-            fix_dir(urljoin(fix_dir(self.conf.url_base), job_id)),
-            logger=(logger or self.get_logger(job_id)),
-            path_perm_exists=path_perm_exists,
+def get_job_logger(job_id, logger_name):
+    """ Custom logger. """
+    return JobLoggerAdapter(getLogger(logger_name), {'job_id': job_id})
+
+
+def get_context(job_id, path_perm_exists=False, logger=None, conf=None):
+    """ Get context for the given job_id. """
+    conf = conf or get_wps_config()
+    return Context(
+        join(conf.path_temp, job_id),
+        join(conf.path_perm, job_id),
+        fix_dir(urljoin(fix_dir(conf.url_base), job_id)),
+        logger=(logger or get_job_logger(job_id, LOGGER_NAME)),
+        path_perm_exists=path_perm_exists,
+    )
+
+
+def update_reponse(context, encoded_response, logger):
+    """ Update the execute response. """
+    with open(RESPONSE_FILE, 'wb') as fobj:
+        fobj.write(
+            ENCODER.serialize(encoded_response, encoding='utf-8')
         )
-
-    def update_reponse(self, context, encoded_response, logger):
-        """ Update the execute response. """
-        with open(RESPONSE_FILE, 'wb') as fobj:
-            fobj.write(
-                self.encoder.serialize(encoded_response, encoding='utf-8')
-            )
-        path, url = context.publish(RESPONSE_FILE)
-        logger.info("Response updated.")
-        return path, url
+    path, url = context.publish(RESPONSE_FILE)
+    logger.info("Response updated.")
+    return path, url
 
 
-    def execute(self, job_id, process, raw_inputs, resp_form, extra_parts):
-        """ Asynchronous process execution. """
-        self.check_job_id(job_id)
-        logger = self.get_logger(job_id)
+def get_response_url(job_id, conf=None):
+    """ Return response URL for the given job identifier. """
+    conf = conf or get_wps_config()
+    return urljoin(
+        urljoin(
+            fix_dir(conf.url_base), fix_dir(check_job_id(job_id))
+        ), RESPONSE_FILE
+    )
 
-        with self.get_context(job_id, False, logger) as context:
-            self.update_reponse(context, self.encoder.encode_accepted(
-                #TODO: Fix the lineage output.
-                process, resp_form, {}, raw_inputs, self.get_response_url(job_id)
-            ), logger)
+def accept_job(job_id, process, raw_inputs, resp_form, extra_parts):
+    """ Accept the received task. """
+    check_job_id(job_id)
+    conf = get_wps_config()
+    logger = get_job_logger(job_id, LOGGER_NAME)
 
-        # following core will be performed by the worker process
-        with self.get_context(job_id, True, logger) as context:
+    with get_context(job_id, False, logger, conf) as context:
+        update_reponse(context, ENCODER.encode_accepted(
+            #TODO: Fix the lineage output.
+            process, resp_form, {}, raw_inputs,
+            get_response_url(job_id, conf)
+        ), logger)
+
+
+def execute_job(job_id, process, raw_inputs, resp_form, extra_parts):
+    """ Asynchronous process execution. """
+    try:
+        check_job_id(job_id)
+        conf = get_wps_config()
+        logger = get_job_logger(job_id, LOGGER_NAME)
+
+        with get_context(job_id, True, logger, conf) as context:
             try:
                 # convert process's input/output definitions to a common format
                 input_defs = parse_params(process.inputs)
@@ -115,7 +128,8 @@ class Handler(object):
                 inputs = {"context": context}
                 inputs.update(decode_output_requests(resp_form, output_defs))
                 inputs.update(decode_raw_inputs(
-                    raw_inputs, input_defs, InMemoryURLResolver(extra_parts, logger)
+                    raw_inputs, input_defs,
+                    InMemoryURLResolver(extra_parts, logger)
                 ))
 
                 # execute the process
@@ -124,39 +138,37 @@ class Handler(object):
                 # pack the outputs
                 packed_outputs = pack_outputs(outputs, resp_form, output_defs)
 
-                response = self.encoder.encode_response(
+                response = ENCODER.encode_response(
                     process, packed_outputs, resp_form, inputs, raw_inputs,
-                    self.get_response_url(job_id)
+                    get_response_url(job_id, conf)
                 )
 
             except Exception as exception: # pylint: disable=broad-except
-                response = self.encoder.encode_failed(
+                response = ENCODER.encode_failed(
                     process, exception, resp_form, inputs, raw_inputs,
-                    self.get_response_url(job_id)
+                    get_response_url(job_id, conf)
                 )
 
-            self.update_reponse(context, response, logger)
+            update_reponse(context, response, logger)
 
-    def get_response_url(self, job_id):
-        """ Return response URL for the given job identifier. """
-        return urljoin(
-            urljoin(
-                fix_dir(self.conf.url_base), fix_dir(self.check_job_id(job_id))
-            ), RESPONSE_FILE
-        )
+    except Exception as exception: # pylint: disable=broad-except
+        return exception
+    else:
+        return None
 
-    def purge(self, job_id, **kwargs):
-        """ Purge the job from the system by removing all the resources
-        occupied by the job.
-        """
-        # TODO: fix me
-        self.check_job_id(job_id)
-        logger = self.get_logger(job_id)
-        path_temp = join(self.conf.path_temp, job_id)
-        if isdir(path_temp):
-            rmtree(path_temp)
-            logger.debug("removed %s", path_temp)
-        path_perm = join(self.conf.path_perm, job_id)
-        if isdir(path_perm):
-            rmtree(path_perm)
-            logger.debug("removed %s", path_perm)
+
+def purge_job(job_id, logger=None):
+    """ Purge the job from the system by removing all the resources
+    occupied by the job.
+    """
+    check_job_id(job_id)
+    conf = get_wps_config()
+    logger = logger or get_job_logger(job_id, LOGGER_NAME)
+    path_temp = join(conf.path_temp, job_id)
+    if isdir(path_temp):
+        rmtree(path_temp)
+        logger.debug("removed %s", path_temp)
+    path_perm = join(conf.path_perm, job_id)
+    if isdir(path_perm):
+        rmtree(path_perm)
+        logger.debug("removed %s", path_perm)

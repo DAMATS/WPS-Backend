@@ -34,21 +34,24 @@ from os import environ
 from os.path import basename
 from logging import getLogger, DEBUG, Formatter, StreamHandler
 from time import time
+from datetime import datetime
 
 from traceback import format_exc
 from socket import error as SocketError
 from signal import SIGINT, SIGTERM, signal
 from threading import Thread, Semaphore, Event
+import multiprocessing.util as mp_util
+from multiprocessing import Semaphore as ProcessSemaphore, Pool as ProcessPool
 
 import django
 from eoxserver.core import initialize as eoxs_initialize
 
 from eoxs_wps_async.config import get_wps_config
-from eoxs_wps_async.util.thread import ThreadSet
+from eoxs_wps_async.util.thread import ThreadSet, Queue
 from eoxs_wps_async.util.ipc import get_listener
-from eoxs_wps_async.handler import Handler
+from eoxs_wps_async.handler import accept_job, execute_job, purge_job
 
-LOGGER_NAME = "eoxserver.services.ows.wps.daemon"
+LOGGER_NAME = "eoxs_wps_async.daemon"
 
 def error(message, *args):
     """ Print error message. """
@@ -75,6 +78,60 @@ def set_stream_handler(logger, level=DEBUG):
     handler.setFormatter(formatter)
     logger.addHandler(handler)
     logger.setLevel(level)
+
+
+class WorkerPoolManager(Thread):
+    """ Thread managing the worker pool
+
+    Parameters:
+        worker_pool - worker pool
+        semaphore - worker semaphore
+        job_queue - job queue
+        timeout - semaphore time-out in seconds
+    """
+
+    def __init__(self, worker_pool, semaphore, job_queue, timeout=1.0):
+        Thread.__init__(self)
+        self._pool = worker_pool
+        self._semaphore = semaphore
+        self._job_queue = job_queue
+        self._stop_event = Event()
+        self.timeout = timeout
+
+    def stop(self):
+        """ Tell the thread to stop. """
+        self._stop_event.set()
+
+    def run(self):
+        """ Thread connection handler. """
+        logger = getLogger(LOGGER_NAME)
+        logger.debug("WPM: START")
+
+        def callback(exception):
+            """ Worker callback. """
+            self._semaphore.release()
+            logger.debug("WPM: SEMAPHORE RELEASED")
+            if exception:
+                logger.error("%s", exception)
+                for line in format_exc().split("\n"):
+                    logger.debug(line)
+
+        while not self._stop_event.is_set():
+            if self._semaphore.acquire(True, self.timeout):
+                logger.debug("WPM: SEMAPHORE ACQUIRED")
+                while not self._stop_event.is_set():
+                    try:
+                        _, job = self._job_queue.get()
+                    except self._job_queue.Empty:
+                        continue
+                    self._pool.apply_async(
+                        #execute_job, job, callback=worker_callback
+                        execute_job, job, callback=callback
+                    )
+                    logger.debug("WPM: APPLIED JOB")
+                    break
+
+        logger.debug("WPM: STOP")
 
 
 class ConnectionHandler(Thread):
@@ -190,7 +247,8 @@ class Daemon(object):
     """
 
     def __init__(self, socket_filename, max_connections=64,
-                 connection_timeout=10, poll_timeout=1, logger=None):
+                 connection_timeout=10, poll_timeout=1, num_workers=1,
+                 max_queued_jobs=8, logger=None):
         self.socket_address = socket_filename
         self.socket_family = 'AF_UNIX'
         self.socket_args = ()
@@ -200,8 +258,18 @@ class Daemon(object):
         self.connection_handlers = ThreadSet()
         self.connection_timeout = connection_timeout
         self.connection_poll_timeout = poll_timeout
+        self.job_queue = Queue(max_queued_jobs)
+
         self.logger = logger or getLogger(LOGGER_NAME)
 
+        # set verbose multi-processes debugging
+        set_stream_handler(mp_util.get_logger())
+        mp_util.get_logger().setLevel(mp_util.DEBUG)
+        worker_semaphore = ProcessSemaphore(num_workers)
+        self.worker_pool = ProcessPool(num_workers)
+        self.worker_pool_manager = WorkerPoolManager(
+            self.worker_pool, worker_semaphore, self.job_queue
+        )
 
     def run(self):
         """ Start the daemon. """
@@ -210,6 +278,7 @@ class Daemon(object):
                 "An attempt to start again an already running daemon instance!"
             )
         self.logger.info("Starting daemon ...")
+        self.worker_pool_manager.start()
         try:
             # set signal handlers
             signal(SIGINT, self.terminate)
@@ -231,28 +300,41 @@ class Daemon(object):
                     self.connection_poll_timeout,
                 ).start()
         except SocketError as exc:
-            if self.socket_listener is not None:
-                self.logger.error("SocketError: %s", exc)
-                for line in format_exc().split("\n"):
-                    self.logger.debug(line)
+            self.logger.error("SocketError: %s", exc)
+            for line in format_exc().split("\n"):
+                self.logger.debug(line)
         finally:
             self.cleanup()
 
     def cleanup(self):
         """ Perform the final clean-up. """
-        if self.socket_listener is None:
-            return
-        self.logger.info("Stopping daemon ...")
-        self.socket_listener.close()
-        self.socket_listener = None
-        # politely as threads to stop
-        for item in list(self.connection_handlers):
-            item.stop()
-        # wait for the pending threads
-        for item in list(self.connection_handlers):
-            item.join()
-        self.logger.info("Daemon stopped.")
-        info("Daemon is stopped.")
+        if self.socket_listener is not None:
+            self.logger.info("Stopping daemon ...")
+            self.socket_listener.close()
+            self.socket_listener = None
+
+            # politely ask threads to stop
+            for item in list(self.connection_handlers):
+                item.stop()
+            # wait for the pending threads
+            for item in list(self.connection_handlers):
+                item.join()
+            self.logger.info("Daemon stopped.")
+            info("Daemon is stopped.")
+
+        # terminate the worker pool manager
+        if self.worker_pool_manager:
+            self.worker_pool_manager.stop()
+            self.worker_pool_manager.join()
+            self.worker_pool_manager = None
+
+        # terminate worker processes
+        if self.worker_pool:
+            #self.worker_pool.close()
+            self.worker_pool.terminate()
+            self.worker_pool.join()
+            #self.worker_pool = None
+
 
     def terminate(self, signum=None, frame=None):
         # pylint: disable=unused-argument
@@ -271,10 +353,16 @@ class Daemon(object):
 
     def request_handler(self, request):
         """ Request handler. """
-        handler = Handler()
         try:
             if request[0] == "EXECUTE":
-                handler.execute(request[1], *request[2])
+                timestamp = datetime.utcnow()
+                job = request[1:]
+                accept_job(*job)
+                try:
+                    self.job_queue.put((timestamp, job))
+                except self.job_queue.Full:
+                    purge_job(job[0])
+                    return "BUSY",
             else:
                 ValueError("Unknown request! REQ=%r" % request[0])
         except Exception as exc: #pylint: disable=broad-except
@@ -323,7 +411,9 @@ def main(argv):
             conf.socket_max_connections,
             conf.socket_connection_timeout,
             conf.socket_poll_timeout,
-            logger,
+            conf.num_workers,
+            conf.max_queued_jobs,
+            logger=logger,
         ).run()
     except Exception as exc:
         logger.error("Daemon crash: %s", exc)
