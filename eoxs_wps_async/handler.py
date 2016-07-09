@@ -36,7 +36,7 @@ from urlparse import urljoin
 
 from eoxserver.services.ows.wps.context import Context
 from eoxserver.services.ows.wps.v10.encoders import (
-    WPS10ExecuteResponseXMLEncoder,
+    WPS10ExecuteResponseXMLEncoder
 )
 from eoxserver.services.ows.wps.util import (
     parse_params, InMemoryURLResolver,
@@ -48,10 +48,6 @@ from eoxs_wps_async.config import get_wps_config
 
 LOGGER_NAME = "eoxserver.services.ows.wps"
 RE_JOB_ID = re.compile(r'^[A-Za-z0-9_.-]+$')
-RESPONSE_FILE = "executeResponse.xml"
-
-
-ENCODER = WPS10ExecuteResponseXMLEncoder()
 
 def check_job_id(job_id):
     """ Check job id """
@@ -65,27 +61,16 @@ def get_job_logger(job_id, logger_name):
     return JobLoggerAdapter(getLogger(logger_name), {'job_id': job_id})
 
 
-def get_context(job_id, path_perm_exists=False, logger=None, conf=None):
+def get_context_args(job_id, path_perm_exists=False, logger=None, conf=None):
     """ Get context for the given job_id. """
     conf = conf or get_wps_config()
-    return Context(
-        join(conf.path_temp, job_id),
-        join(conf.path_perm, job_id),
-        fix_dir(urljoin(fix_dir(conf.url_base), job_id)),
-        logger=(logger or get_job_logger(job_id, LOGGER_NAME)),
-        path_perm_exists=path_perm_exists,
-    )
-
-
-def update_reponse(context, encoded_response, logger):
-    """ Update the execute response. """
-    with open(RESPONSE_FILE, 'wb') as fobj:
-        fobj.write(
-            ENCODER.serialize(encoded_response, encoding='utf-8')
-        )
-    path, url = context.publish(RESPONSE_FILE)
-    logger.info("Response updated.")
-    return path, url
+    return {
+        "path_temp": join(conf.path_temp, job_id),
+        "path_perm": join(conf.path_perm, job_id),
+        "url_base": fix_dir(urljoin(fix_dir(conf.url_base), job_id)),
+        "path_perm_exists": path_perm_exists,
+        "logger": logger or get_job_logger(job_id, LOGGER_NAME),
+    }
 
 
 def get_response_url(job_id, conf=None):
@@ -94,7 +79,7 @@ def get_response_url(job_id, conf=None):
     return urljoin(
         urljoin(
             fix_dir(conf.url_base), fix_dir(check_job_id(job_id))
-        ), RESPONSE_FILE
+        ), Context.RESPONSE_FILE
     )
 
 def accept_job(job_id, process, raw_inputs, resp_form, extra_parts):
@@ -102,13 +87,10 @@ def accept_job(job_id, process, raw_inputs, resp_form, extra_parts):
     check_job_id(job_id)
     conf = get_wps_config()
     logger = get_job_logger(job_id, LOGGER_NAME)
-
-    with get_context(job_id, False, logger, conf) as context:
-        update_reponse(context, ENCODER.encode_accepted(
-            #TODO: Fix the lineage output.
-            process, resp_form, {}, raw_inputs,
-            get_response_url(job_id, conf)
-        ), logger)
+    encoder = WPS10ExecuteResponseXMLEncoder(process, resp_form, raw_inputs)
+    context = Context(encoder, **get_context_args(job_id, False, logger, conf))
+    with context:
+        context.set_accepted()
 
 
 def execute_job(job_id, process, raw_inputs, resp_form, extra_parts):
@@ -117,8 +99,12 @@ def execute_job(job_id, process, raw_inputs, resp_form, extra_parts):
         check_job_id(job_id)
         conf = get_wps_config()
         logger = get_job_logger(job_id, LOGGER_NAME)
-
-        with get_context(job_id, True, logger, conf) as context:
+        encoder = WPS10ExecuteResponseXMLEncoder(process, resp_form, raw_inputs)
+        context = Context(
+            encoder, **get_context_args(job_id, True, logger, conf)
+        )
+        with context:
+            context.set_started()
             try:
                 # convert process's input/output definitions to a common format
                 input_defs = parse_params(process.inputs)
@@ -136,20 +122,11 @@ def execute_job(job_id, process, raw_inputs, resp_form, extra_parts):
                 outputs = process.execute(**inputs)
 
                 # pack the outputs
-                packed_outputs = pack_outputs(outputs, resp_form, output_defs)
-
-                response = ENCODER.encode_response(
-                    process, packed_outputs, resp_form, inputs, raw_inputs,
-                    get_response_url(job_id, conf)
+                context.set_succeeded(
+                    pack_outputs(outputs, resp_form, output_defs)
                 )
-
             except Exception as exception: # pylint: disable=broad-except
-                response = ENCODER.encode_failed(
-                    process, exception, resp_form, inputs, raw_inputs,
-                    get_response_url(job_id, conf)
-                )
-
-            update_reponse(context, response, logger)
+                context.set_failed(exception)
 
     except Exception as exception: # pylint: disable=broad-except
         return exception
@@ -164,11 +141,13 @@ def purge_job(job_id, logger=None):
     check_job_id(job_id)
     conf = get_wps_config()
     logger = logger or get_job_logger(job_id, LOGGER_NAME)
-    path_temp = join(conf.path_temp, job_id)
-    if isdir(path_temp):
-        rmtree(path_temp)
-        logger.debug("removed %s", path_temp)
-    path_perm = join(conf.path_perm, job_id)
-    if isdir(path_perm):
-        rmtree(path_perm)
-        logger.debug("removed %s", path_perm)
+
+    dirs = [
+        join(conf.path_temp, job_id),
+        join(conf.path_perm, job_id),
+    ]
+
+    for path in dirs:
+        if isdir(path):
+            rmtree(path)
+            logger.debug("removed %s", path)

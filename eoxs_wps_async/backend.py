@@ -86,7 +86,7 @@ class WPSAsyncBackendBase(Component):
 
     def get_response_url(self, job_id):
         """ Return response URL for the given job identifier. """
-        get_response_url(job_id, self.conf)
+        return get_response_url(job_id, self.conf)
 
     def purge(self, job_id, **kwargs):
         """ Purge the job from the system by removing all the resources
