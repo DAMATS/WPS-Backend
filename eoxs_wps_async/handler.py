@@ -34,17 +34,17 @@ from os.path import join, isdir
 from shutil import rmtree
 from urlparse import urljoin
 
-from eoxserver.services.ows.wps.context import Context
+from eoxserver.services.ows.wps.util import InMemoryURLResolver
 from eoxserver.services.ows.wps.v10.encoders import (
     WPS10ExecuteResponseXMLEncoder
 )
-from eoxserver.services.ows.wps.util import (
-    parse_params, InMemoryURLResolver,
-    decode_raw_inputs, decode_output_requests, pack_outputs,
+from eoxserver.services.ows.wps.v10.execute_util import (
+    parse_params, decode_raw_inputs, decode_output_requests, pack_outputs,
 )
 
 from eoxs_wps_async.util import fix_dir, JobLoggerAdapter
 from eoxs_wps_async.config import get_wps_config
+from eoxs_wps_async.context import Context
 
 LOGGER_NAME = "eoxserver.services.ows.wps"
 RE_JOB_ID = re.compile(r'^[A-Za-z0-9_.-]+$')
