@@ -32,7 +32,7 @@ import sys
 from sys import stderr
 from os import environ
 from os.path import basename
-from logging import getLogger, DEBUG, Formatter, StreamHandler
+from logging import getLogger, DEBUG, INFO, Formatter, StreamHandler
 from time import time
 from datetime import datetime
 
@@ -58,11 +58,6 @@ def error(message, *args):
     print >>stderr, "ERROR: %s" % (message % args)
 
 
-def info(message, *args):
-    """ Print error message. """
-    print >>stderr, "INFO: %s" % (message % args)
-
-
 def usage(exename):
     """ Print simple usage. """
     print >>stderr, (
@@ -82,8 +77,9 @@ def set_stream_handler(logger, level=DEBUG):
 
 def init_worker():
     """ Process pool initialization. """
-    # ignore SIGINT in the worker processes
+    # ignore SIGINT and SIGTERM in the worker processes to prevent dead-locks
     signal(SIGINT, SIG_IGN)
+    signal(SIGTERM, SIG_IGN)
 
 
 class WorkerPoolManager(Thread):
@@ -185,7 +181,7 @@ class ConnectionHandler(Thread):
         logger = getLogger(LOGGER_NAME)
         try:
             if self._semaphore.acquire(False):
-                logger.info("New connection accepted.")
+                logger.debug("New connection accepted.")
                 try:
                     start_time = time()
                     while not self._stop_event.is_set():
@@ -233,8 +229,8 @@ class ConnectionHandler(Thread):
             for line in format_exc().split("\n"):
                 logger.error(line)
         finally:
-            logger.debug("CLOSE")
             self._connection.close()
+            logger.debug("Connection closed.")
             if self._thread_group:
                 self._thread_group.remove(self)
 
@@ -297,7 +293,7 @@ class Daemon(object):
                 *self.socket_args, **self.socket_kwargs
             )
             # start handling new connections
-            info("Daemon is listening to new connections ...")
+            self.logger.info("Daemon is listening to new connections ...")
             while True:
                 ConnectionHandler(
                     self.request_handler,
@@ -307,9 +303,7 @@ class Daemon(object):
                     self.connection_poll_timeout,
                 ).start()
         except SocketError as exc:
-            self.logger.error("SocketError: %s", exc)
-            for line in format_exc().split("\n"):
-                self.logger.debug(line)
+            self.logger.error("SocketError: %s" % exc)
         finally:
             self.cleanup()
 
@@ -319,10 +313,7 @@ class Daemon(object):
         if getattr(self, '_cleanedup', False):
             return
         self._cleanedup = True
-
-        message = "Stopping daemon ..."
-        self.logger.info(message)
-        info(message)
+        self.logger.info("Stopping daemon ...")
 
         # terminate threads and processes
         if self.socket_listener:
@@ -342,10 +333,7 @@ class Daemon(object):
         self.worker_pool_manager = None
         self.worker_pool = None
 
-        message = "Daemon stopped."
-        self.logger.info(message)
-        info(message)
-
+        self.logger.info("Daemon is stopped.")
 
     def terminate(self, signum=None, frame=None):
         # pylint: disable=unused-argument
@@ -401,7 +389,7 @@ def main(argv):
 
     # initialize the EOxServer component system.
     # ... set temporary stderr stream log handler to see the components' imports
-    set_stream_handler(getLogger())
+    set_stream_handler(getLogger(), DEBUG)
     eoxs_initialize()
 
     # initialize Django
@@ -410,8 +398,8 @@ def main(argv):
     # kick in logger
     # initialize Django
     logger = getLogger(LOGGER_NAME)
+    set_stream_handler(logger, INFO)
     logger.info("Daemon is initialized.")
-    info("Daemon is initialized.")
 
     # load configuration
     conf = get_wps_config()
