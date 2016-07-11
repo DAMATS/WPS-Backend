@@ -36,9 +36,9 @@ from eoxserver.services.ows.wps.exceptions import ServerBusy, NoApplicableCode
 
 from eoxs_wps_async.util import cached_property
 from eoxs_wps_async.config import get_wps_config
-from eoxs_wps_async.client import Client
+from eoxs_wps_async.client import Client, ClientError
 from eoxs_wps_async.handler import (
-    purge_job, check_job_id, get_job_logger, get_response_url,
+    check_job_id, get_job_logger, get_response_url,
 )
 
 LOGGER_NAME = "eoxserver.services.ows.wps"
@@ -92,4 +92,18 @@ class WPSAsyncBackendBase(Component):
         """ Purge the job from the system by removing all the resources
         occupied by the job.
         """
-        return purge_job(job_id, get_job_logger(job_id, LOGGER_NAME))
+        job_id = check_job_id(job_id)
+        logger = get_job_logger(job_id, LOGGER_NAME)
+
+        with self.client as client:
+            client.send(("PURGE", job_id))
+            response = client.recv()
+
+        if response[0] == "OK":
+            return
+        elif response[0] == "ERROR":
+            raise ClientError(response[1])
+        else:
+            message = "Unknown response! RESP=%r" % response[0]
+            logger.error(message)
+            raise ValueError(message)

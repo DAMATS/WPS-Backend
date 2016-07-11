@@ -80,6 +80,7 @@ class WPSConfigReader(Reader):
     section = "services.ows.wps"
     path_temp = Option(required=True)
     path_perm = Option(required=True)
+    path_task = Option(required=True)
     url_base = Option(required=True)
     socket_file = Option(required=True)
     socket_max_connections = Option(

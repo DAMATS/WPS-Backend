@@ -37,6 +37,9 @@ from eoxs_wps_async.util.ipc import get_client
 class ClientError(IOError):
     """ Client error. """
 
+class ConnectionError(ClientError):
+    """ Failed to connect to the processing daemon. """
+
 class ConnectionTimeout(ClientError):
     """ Client connection time-out. """
 
@@ -83,7 +86,9 @@ class Client(object):
                 )
             except SocketError as exc:
                 if exc.errno == errno.ENOENT:
-                    raise ClientError("Failed to connect to the daemon socket!")
+                    raise ConnectionError(
+                        "Failed to connect to the daemon socket!"
+                    )
 
 
     def close(self):

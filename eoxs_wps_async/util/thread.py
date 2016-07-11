@@ -83,9 +83,9 @@ class Queue(object):
         self.timeout = timeout
 
     @locked
-    def put(self, item):
+    def put(self, item, check_size=True):
         """ Insert item into the queue. """
-        if len(self._items) >= self.maxsize:
+        if check_size and len(self._items) >= self.maxsize:
             raise self.Full
         self._items.append(item)
         self._cond.notify()

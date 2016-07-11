@@ -31,15 +31,16 @@
 import sys
 from sys import stderr
 from os import environ
-from os.path import basename
+from os.path import basename, join, getctime, isfile
+from glob import iglob
 from logging import getLogger, DEBUG, INFO, Formatter, StreamHandler
 from time import time
 from datetime import datetime
-
 from traceback import format_exc
 from socket import error as SocketError
 from signal import SIGINT, SIGTERM, signal, SIG_IGN
 from threading import Thread, Semaphore, Event
+import cPickle as pickle
 import multiprocessing.util as mp_util
 from multiprocessing import Semaphore as ProcessSemaphore, Pool as ProcessPool
 
@@ -49,7 +50,10 @@ from eoxserver.core import initialize as eoxs_initialize
 from eoxs_wps_async.config import get_wps_config
 from eoxs_wps_async.util.thread import ThreadSet, Queue
 from eoxs_wps_async.util.ipc import get_listener
-from eoxs_wps_async.handler import accept_job, execute_job, purge_job
+from eoxs_wps_async.handler import (
+    check_job_id, get_task_path, accept_job, execute_job, purge_job,
+    is_valid_job_id,
+)
 
 LOGGER_NAME = "eoxs_wps_async.daemon"
 
@@ -72,7 +76,7 @@ def set_stream_handler(logger, level=DEBUG):
     handler.setLevel(level)
     handler.setFormatter(formatter)
     logger.addHandler(handler)
-    logger.setLevel(level)
+    logger.setLevel(min(level, logger.level))
 
 
 def init_worker():
@@ -123,9 +127,17 @@ class WorkerPoolManager(Thread):
                 logger.debug("WPM: SEMAPHORE ACQUIRED")
                 while not self._stop_event.is_set():
                     try:
-                        _, job = self._job_queue.get()
+                        _, job_id = self._job_queue.get()
                     except self._job_queue.Empty:
                         continue
+                    # load the pickled job
+                    try:
+                        with open(get_task_path(job_id), "rb") as fobj:
+                            _, job = pickle.load(fobj)
+                    except: # pylint: disable=bare-except
+                        logger.error(
+                            "Failed to unpickle job %s! The job is ignored!"
+                        )
                     self._pool.apply_async(
                         #execute_job, job, callback=worker_callback
                         execute_job, job, callback=callback
@@ -292,6 +304,9 @@ class Daemon(object):
                 self.socket_address, self.socket_family,
                 *self.socket_args, **self.socket_kwargs
             )
+            # load pickled jobs left from the previous run
+            self.logger.info("Loading stored jobs ...")
+            self.load_tasks()
             # start handling new connections
             self.logger.info("Daemon is listening to new connections ...")
             while True:
@@ -312,7 +327,7 @@ class Daemon(object):
         # avoid repeated clean-up
         if getattr(self, '_cleanedup', False):
             return
-        self._cleanedup = True
+        self._cleanedup = True # pylint: disable=attribute-defined-outside-init
         self.logger.info("Stopping daemon ...")
 
         # terminate threads and processes
@@ -353,15 +368,38 @@ class Daemon(object):
     def request_handler(self, request):
         """ Request handler. """
         try:
-            if request[0] == "EXECUTE":
+            action, payload = request[0], request[1:]
+            if action == "EXECUTE":
+                # enqueue a new job for asynchronous execution
                 timestamp = datetime.utcnow()
-                job = request[1:]
-                accept_job(*job)
+                # check that job id can be used in file-system paths (security)
+                job_id = check_job_id(payload[0])
                 try:
-                    self.job_queue.put((timestamp, job))
+                    # save the pickle the job (persistence)
+                    with open(get_task_path(job_id), "wb") as fobj:
+                        pickle.dump((timestamp, payload), fobj, 2)
+                    # initialize the context and the stored response
+                    accept_job(*payload)
+                    # enqueue the job for execution
+                    self.job_queue.put((timestamp, job_id))
                 except self.job_queue.Full:
-                    purge_job(job[0])
+                    purge_job(job_id)
                     return "BUSY",
+                except:
+                    purge_job(job_id)
+                    raise
+            elif action == "PURGE":
+                # wipe out job and all resources it uses
+                # check that job id can be used in paths (security)
+                job_id = check_job_id(payload[0])
+                # remove enqueued job
+                self.job_queue.remove(lambda v: v[1] == job_id)
+                # remove files and directories
+                purge_job(job_id)
+            #elif action == "LIST":
+                # list all jobs and their status
+            #elif action == "STATUS":
+                # get status of a job
             else:
                 ValueError("Unknown request! REQ=%r" % request[0])
         except Exception as exc: #pylint: disable=broad-except
@@ -371,6 +409,23 @@ class Daemon(object):
             return "ERROR", str(exc)
         else:
             return "OK",
+
+    def load_tasks(self):
+        """ Load tasks after server restart. """
+        task_path = get_wps_config().path_task
+        # list pickled jobs (base-name is a valid job id) and sort them by ctime
+        jobs = sorted(
+            (ctime, job_id) for ctime, job_id in (
+                (getctime(fname), basename(fname))
+                for fname in iglob(join(task_path, '*')) if isfile(fname)
+            ) if is_valid_job_id(job_id)
+        )
+        # enqueue job by passing the queue size limit
+        for ctime, job_id in jobs:
+            self.job_queue.put((datetime.utcfromtimestamp(ctime), job_id))
+            self.logger.debug("Enqueued job %s." % job_id)
+        self.logger.info("Loaded %d stored jobs." % len(jobs))
+
 
 def main(argv):
     """ Main subroutine. """
@@ -389,7 +444,7 @@ def main(argv):
 
     # initialize the EOxServer component system.
     # ... set temporary stderr stream log handler to see the components' imports
-    set_stream_handler(getLogger(), DEBUG)
+    set_stream_handler(getLogger(), INFO)
     eoxs_initialize()
 
     # initialize Django

@@ -30,7 +30,8 @@
 
 import re
 from logging import getLogger
-from os.path import join, isdir
+from os import remove
+from os.path import join, isdir, isfile
 from shutil import rmtree
 from urlparse import urljoin
 
@@ -47,40 +48,60 @@ from eoxs_wps_async.config import get_wps_config
 from eoxs_wps_async.context import Context
 
 LOGGER_NAME = "eoxserver.services.ows.wps"
-RE_JOB_ID = re.compile(r'^[A-Za-z0-9_.-]+$')
+RE_JOB_ID = re.compile(r'^[A-Za-z0-9_][A-Za-z0-9_.-]*$')
+
+def is_valid_job_id(job_id):
+    """ Return true for a valid job id."""
+    return bool((isinstance(job_id, basestring) and RE_JOB_ID.match(job_id)))
 
 def check_job_id(job_id):
-    """ Check job id """
-    if not (isinstance(job_id, basestring) and RE_JOB_ID.match(job_id)):
+    """ Check job id. """
+    if not is_valid_job_id(job_id):
         raise ValueError("Invalid job identifier %r!" % job_id)
     return job_id
-
 
 def get_job_logger(job_id, logger_name):
     """ Custom logger. """
     return JobLoggerAdapter(getLogger(logger_name), {'job_id': job_id})
 
 
-def get_context_args(job_id, path_perm_exists=False, logger=None, conf=None):
-    """ Get context for the given job_id. """
+def get_task_path(job_id, conf=None):
+    """ Get path to the stored task. """
+    return join((conf or get_wps_config()).path_task, job_id)
+
+
+def get_perm_path(job_id, conf=None):
+    """ Get path of the permanent output directory. """
+    return join((conf or get_wps_config()).path_perm, job_id)
+
+
+def get_temp_path(job_id, conf=None):
+    """ Get path of the permanent output directory. """
+    return join((conf or get_wps_config()).path_temp, job_id)
+
+
+def get_base_url(job_id, conf=None):
+    """ Get URL of the permanent output directory."""
     conf = conf or get_wps_config()
-    return {
-        "path_temp": join(conf.path_temp, job_id),
-        "path_perm": join(conf.path_perm, job_id),
-        "url_base": fix_dir(urljoin(fix_dir(conf.url_base), job_id)),
-        "path_perm_exists": path_perm_exists,
-        "logger": logger or get_job_logger(job_id, LOGGER_NAME),
-    }
+    return urljoin(fix_dir(conf.url_base), fix_dir(job_id))
 
 
 def get_response_url(job_id, conf=None):
     """ Return response URL for the given job identifier. """
+    return urljoin(get_base_url(job_id, conf), Context.RESPONSE_FILE)
+
+
+def get_context_args(job_id, path_perm_exists=False, logger=None, conf=None):
+    """ Get context for the given job_id. """
     conf = conf or get_wps_config()
-    return urljoin(
-        urljoin(
-            fix_dir(conf.url_base), fix_dir(check_job_id(job_id))
-        ), Context.RESPONSE_FILE
-    )
+    return {
+        "path_temp": get_temp_path(job_id, conf),
+        "path_perm": get_perm_path(job_id, conf),
+        "url_base": get_base_url(job_id, conf),
+        "path_perm_exists": path_perm_exists,
+        "logger": logger or get_job_logger(job_id, LOGGER_NAME),
+    }
+
 
 def accept_job(job_id, process, raw_inputs, resp_form, extra_parts):
     """ Accept the received task. """
@@ -127,6 +148,12 @@ def execute_job(job_id, process, raw_inputs, resp_form, extra_parts):
                 )
             except Exception as exception: # pylint: disable=broad-except
                 context.set_failed(exception)
+            finally:
+                # remove the pickled task
+                task_file = get_task_path(job_id, conf)
+                if isfile(task_file):
+                    remove(task_file)
+                    logger.debug("removed %s", task_file)
 
     except Exception as exception: # pylint: disable=broad-except
         return exception
@@ -142,12 +169,16 @@ def purge_job(job_id, logger=None):
     conf = get_wps_config()
     logger = logger or get_job_logger(job_id, LOGGER_NAME)
 
-    dirs = [
-        join(conf.path_temp, job_id),
-        join(conf.path_perm, job_id),
+    paths = [
+        get_task_path(job_id, conf),
+        get_perm_path(job_id, conf),
+        get_temp_path(job_id, conf),
     ]
 
-    for path in dirs:
+    for path in paths:
         if isdir(path):
             rmtree(path)
+            logger.debug("removed %s", path)
+        elif isfile(path):
+            remove(path)
             logger.debug("removed %s", path)
