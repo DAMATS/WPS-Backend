@@ -52,9 +52,10 @@ class PathContext(BaseContext):
     The permanent storage contains the processing outputs and it exists
     even after the process termination.
     """
-    def __init__(self, path_temp, path_perm, url_base, logger=None,
+    def __init__(self, identifier, path_temp, path_perm, url_base, logger=None,
                  path_perm_exists=False):
         """ Inputs:
+            identifier  - a unique identifier of the context (job id.)
             path_temp   - temporary storage path (aka workspace)
             path_perm   - permanent storage path (aka output bucket)
             url_base    - public URL of the output bucket
@@ -65,6 +66,7 @@ class PathContext(BaseContext):
                           bucket exists or not is controlled by this process.
         """
         super(PathContext, self).__init__()
+        self.identifier = identifier
         self.logger = logger or getLogger(__name__)
         self._path_temp = path_temp
         self._path_perm = path_perm

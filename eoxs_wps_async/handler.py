@@ -96,6 +96,7 @@ def get_context_args(job_id, path_perm_exists=False, logger=None, conf=None):
     """ Get context for the given job_id. """
     conf = conf or get_wps_config()
     return {
+        "identifier": job_id,
         "path_temp": get_temp_path(job_id, conf),
         "path_perm": get_perm_path(job_id, conf),
         "url_base": get_base_url(job_id, conf),
