@@ -29,6 +29,7 @@
 # pylint: disable=unused-argument, too-many-arguments, too-many-locals
 
 import re
+from traceback import format_exc
 from logging import getLogger
 from os import remove
 from os.path import join, isdir, isfile
@@ -116,10 +117,14 @@ def accept_job(job_id, process, raw_inputs, resp_form, extra_parts):
 
 def execute_job(job_id, process, raw_inputs, resp_form, extra_parts):
     """ Asynchronous process execution. """
+    # A generic logger is needed to allow exception logging before
+    # the context specific logger adapter is created.
+    logger = getLogger(LOGGER_NAME)
     try:
         check_job_id(job_id)
+        # Replace the generic logger with the context specific adapter.
+        logger = get_job_logger(job_id, LOGGER_NAME) #pylint: disable=redefined-variable-type
         conf = get_wps_config()
-        logger = get_job_logger(job_id, LOGGER_NAME)
         encoder = WPS10ExecuteResponseXMLEncoder(process, resp_form, raw_inputs)
         context = Context(
             encoder, **get_context_args(job_id, True, logger, conf)
@@ -147,6 +152,9 @@ def execute_job(job_id, process, raw_inputs, resp_form, extra_parts):
                     pack_outputs(outputs, resp_form, output_defs)
                 )
             except Exception as exception: # pylint: disable=broad-except
+                logger.debug("%s %s", type(exception).__name__, exception)
+                for line in format_exc().split("\n"):
+                    logger.debug(line)
                 context.set_failed(exception)
             finally:
                 # remove the pickled task
@@ -156,6 +164,9 @@ def execute_job(job_id, process, raw_inputs, resp_form, extra_parts):
                     logger.debug("removed %s", task_file)
 
     except Exception as exception: # pylint: disable=broad-except
+        logger.error("%s %s", type(exception).__name__, exception)
+        for line in format_exc().split("\n"):
+            logger.debug(line)
         return exception
     else:
         return None

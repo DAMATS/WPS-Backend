@@ -118,9 +118,10 @@ class WorkerPoolManager(Thread):
             self._semaphore.release()
             logger.debug("WPM: SEMAPHORE RELEASED")
             if exception:
-                logger.error("%s", exception)
-                for line in format_exc().split("\n"):
-                    logger.debug(line)
+                logger.error(
+                    "Job execution failed! Reason: %s %s",
+                    type(exception).__name__, exception
+                )
 
         while not self._stop_event.is_set():
             if self._semaphore.acquire(True, self.timeout):
