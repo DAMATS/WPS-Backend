@@ -201,7 +201,7 @@ class Context(PathContext):
     def update_response(self, response):
         """ Update the stored execute response. """
         with open(self.RESPONSE_FILE, 'wb') as fobj:
-            fobj.write(self.encoder.serialize(response, encoding='utf-8'))
+            fobj.write(self.encoder.serialize(response)[0])
         path, url = self.publish(self.RESPONSE_FILE)
         self.logger.info("Response updated.")
         return path, url
