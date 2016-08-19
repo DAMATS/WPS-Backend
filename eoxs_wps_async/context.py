@@ -198,6 +198,11 @@ class Context(PathContext):
         self.encoder = encoder
         self._progress = 0
 
+    @property
+    def status_location(self):
+        """ Get the status location URL """
+        return self.encoder.status_location
+
     def update_response(self, response):
         """ Update the stored execute response. """
         with open(self.RESPONSE_FILE, 'wb') as fobj:
