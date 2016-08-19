@@ -105,6 +105,11 @@ def get_context_args(job_id, path_perm_exists=False, logger=None, conf=None):
     }
 
 
+class JobInitializationError(Exception):
+    """ Job initialization error. """
+    pass
+
+
 def accept_job(job_id, process, raw_inputs, resp_form, extra_parts):
     """ Accept the received task. """
     check_job_id(job_id)
@@ -113,6 +118,16 @@ def accept_job(job_id, process, raw_inputs, resp_form, extra_parts):
     encoder = WPS10ExecuteResponseXMLEncoder(process, resp_form, raw_inputs)
     context = Context(encoder, **get_context_args(job_id, False, logger, conf))
     with context:
+        # optional process initialization
+        if hasattr(process, 'initialize'):
+            try:
+                process.initialize(context, raw_inputs, resp_form, extra_parts)
+            except Exception as exception: # pylint: disable=broad-except
+                error_message = "%s: %s" % (type(exception).__name__, exception)
+                logger.debug(error_message)
+                for line in format_exc().split("\n"):
+                    logger.debug(line)
+                raise JobInitializationError(error_message)
         context.set_accepted()
 
 

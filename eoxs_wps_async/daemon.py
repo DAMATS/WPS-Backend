@@ -52,7 +52,7 @@ from eoxs_wps_async.util.thread import ThreadSet, Queue
 from eoxs_wps_async.util.ipc import get_listener
 from eoxs_wps_async.handler import (
     check_job_id, get_task_path, accept_job, execute_job, purge_job,
-    is_valid_job_id,
+    is_valid_job_id, JobInitializationError,
 )
 
 LOGGER_NAME = "eoxs_wps_async.daemon"
@@ -403,11 +403,16 @@ class Daemon(object):
                 # get status of a job
             else:
                 ValueError("Unknown request! REQ=%r" % request[0])
+        except JobInitializationError as exc:
+            # error in the user-defined process initialization
+            return "ERROR", str(exc)
         except Exception as exc: #pylint: disable=broad-except
-            self.logger.error("Handler error: %s", exc)
+            # error in the handler code
+            error_message = "%s: %s" % (type(exc).__name__, exc)
+            self.logger.error(error_message)
             for line in format_exc().split("\n"):
                 self.logger.error(line)
-            return "ERROR", str(exc)
+            return "ERROR", error_message
         else:
             return "OK",
 
