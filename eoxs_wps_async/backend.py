@@ -38,7 +38,7 @@ from eoxs_wps_async.util import cached_property
 from eoxs_wps_async.config import get_wps_config
 from eoxs_wps_async.client import Client, ClientError
 from eoxs_wps_async.handler import (
-    check_job_id, get_job_logger, get_response_url,
+    check_job_id, get_job_logger, get_response_url, get_response,
 )
 
 LOGGER_NAME = "eoxserver.services.ows.wps"
@@ -87,6 +87,12 @@ class WPSAsyncBackendBase(Component):
     def get_response_url(self, job_id):
         """ Return response URL for the given job identifier. """
         return get_response_url(job_id, self.conf)
+
+    def get_response(self, job_id):
+        """ Get the asynchronous response document as an open Python file-like
+        object.
+        """
+        return get_response(job_id, self.conf)
 
     def purge(self, job_id, **kwargs):
         """ Purge the job from the system by removing all the resources
