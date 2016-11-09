@@ -51,7 +51,7 @@ from eoxs_wps_async.config import get_wps_config
 from eoxs_wps_async.util.thread import ThreadSet, Queue
 from eoxs_wps_async.util.ipc import get_listener
 from eoxs_wps_async.handler import (
-    check_job_id, get_task_path, accept_job, execute_job, purge_job,
+    check_job_id, get_task_path, accept_job, execute_job, purge_job, reset_job,
     is_valid_job_id, JobInitializationError,
 )
 
@@ -428,6 +428,7 @@ class Daemon(object):
         )
         # enqueue job by passing the queue size limit
         for ctime, job_id in jobs:
+            reset_job(job_id)
             self.job_queue.put((datetime.utcfromtimestamp(ctime), job_id))
             self.logger.debug("Enqueued job %s." % job_id)
         self.logger.info("Loaded %d stored jobs." % len(jobs))

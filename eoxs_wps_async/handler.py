@@ -199,14 +199,25 @@ def purge_job(job_id, logger=None):
     """
     check_job_id(job_id)
     conf = get_wps_config()
-    logger = logger or get_job_logger(job_id, LOGGER_NAME)
-
-    paths = [
+    _remove_paths([
         get_task_path(job_id, conf),
         get_perm_path(job_id, conf),
         get_temp_path(job_id, conf),
-    ]
+    ], logger or get_job_logger(job_id, LOGGER_NAME))
 
+
+def reset_job(job_id, logger=None):
+    """ Reset the job to its initial state by removing any temporary leftover.
+    """
+    check_job_id(job_id)
+    conf = get_wps_config()
+    _remove_paths([
+        get_temp_path(job_id, conf),
+    ], logger or get_job_logger(job_id, LOGGER_NAME))
+
+
+def _remove_paths(paths, logger):
+    """ Remove paths. """
     for path in paths:
         if isdir(path):
             rmtree(path)
