@@ -73,7 +73,7 @@ Before=httpd.service
 
 [Service]
 Type=simple
-User=damats
+User=<username>
 ExecStart=/usr/bin/python -EsOm eoxs_wps_async.daemon <instance>.settings <instance-root>/<instance>
 
 [Install]
@@ -86,4 +86,5 @@ Save the `systemd` service file, e.g., to `/etc/systemd/system/eoxs_wps_async.se
 systemctl daemon-reload
 systemctl enable eoxs_wps_async.service
 systemctl start eoxs_wps_async.service
+systemctl status eoxs_wps_async.service
 ```
