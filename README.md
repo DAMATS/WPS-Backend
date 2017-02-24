@@ -49,6 +49,21 @@ max_queued_jobs=256
 num_workers=4
 ```
 
+The WPS-asychronous backend can be 'pluged-in' to the EoxServer simply by appending following lines to the instance's `settings.py`:
+```
+# add async WPS backend components
+COMPONENTS += (
+    'eoxs_wps_async.backend',
+    'eoxs_wps_async.processes.**',
+)
+# route async WPS backend logging to the EOxServer's log-file.
+LOGGING['loggers']['eoxs_wps_async'] = {
+    'handlers': ['eoxserver_file'],
+    'level': 'DEBUG' if DEBUG else 'INFO',
+    'propagate': False,
+}
+```
+
 In addition, the permanent WPS storage directory has to be mapped to WPS base URL to allow the outputs to be visible. The Apache server configuration may, e.g., contain following line:
 
 ```
