@@ -103,3 +103,13 @@ systemctl enable eoxs_wps_async.service
 systemctl start eoxs_wps_async.service
 systemctl status eoxs_wps_async.service
 ```
+
+### Restart
+As it was already said, the WPS backend shares the Django context of the EOxServer instance. Any update of the EOxServer code (e.g., new WPS process is added) or configuration (e.g., a change in the `settings.py`) requires restart of the daemon:
+
+```
+systemctl restart eoxs_wps_async.service
+sleep 5 # it takes few secs to load all modules
+systemctl status eoxs_wps_async.service
+```
+The restart terminates the currently executed daemon and starts a new one. The daemon termination stops all currently executed jobs instantly. The newly started daeom then loads terminated or pending jobs enqueues them for processing again.
