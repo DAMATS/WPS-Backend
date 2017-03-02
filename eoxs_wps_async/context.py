@@ -86,7 +86,7 @@ class PathContext(BaseContext):
 
     def __enter__(self):
         # initialize context
-        self.logger.info("Setting up the context.")
+        self.logger.info("Context initialized.")
         # create the temporary directory
         try:
             makedirs(self._path_temp)
@@ -130,7 +130,7 @@ class PathContext(BaseContext):
 
     def __exit__(self, type, value, traceback):
         # remove workspace
-        self.logger.info("Releasing the context.")
+        self.logger.info("Context released.")
         if isdir(self._path_temp):
             # wipe out temporary workspace
             rmtree(self._path_temp)
@@ -208,22 +208,25 @@ class Context(PathContext):
         with open(self.RESPONSE_FILE, 'wb') as fobj:
             fobj.write(self.encoder.serialize(response)[0])
         path, url = self.publish(self.RESPONSE_FILE)
-        self.logger.info("Response updated.")
+        self.logger.debug("Response updated.")
         return path, url
 
     def set_accepted(self):
         """ Set the StatusAccepted stored response.
         """
+        self.logger.info("status: ACCEPTED")
         return self.update_response(self.encoder.encode_accepted())
 
     def set_succeeded(self, outputs):
         """ Set the StatusSucceeded stored response.
         """
+        self.logger.info("status: SUCCEEDED")
         return self.update_response(self.encoder.encode_response(outputs))
 
     def set_failed(self, exception):
         """ Set the StatusAccepted stored response.
         """
+        self.logger.info("status: FAILED")
         return self.update_response(self.encoder.encode_failed(exception))
 
     def set_started(self, progress=None, message=None):
@@ -234,6 +237,9 @@ class Context(PathContext):
         """
         if progress is not None:
             self._progress = progress
+        self.logger.info(
+            "status: STARTED %d%% %s", self._progress, message or ""
+        )
         return self.update_response(
             self.encoder.encode_started(self._progress, message)
         )
@@ -245,6 +251,9 @@ class Context(PathContext):
         """
         if progress is not None:
             self._progress = progress
+        self.logger.info(
+            "status: PAUSED %d%% %s", self._progress, message or ""
+        )
         return self.update_response(self.encoder.encode_paused(self._progress))
 
     def update_progress(self, progress, message):
