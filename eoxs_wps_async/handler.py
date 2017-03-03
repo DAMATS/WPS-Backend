@@ -36,7 +36,9 @@ from os.path import join, isdir, isfile
 from shutil import rmtree
 from urlparse import urljoin
 
+from eoxserver.core import Component, ExtensionPoint, env
 from eoxserver.services.ows.wps.util import InMemoryURLResolver
+from eoxserver.services.ows.wps.interfaces import ProcessInterface
 from eoxserver.services.ows.wps.v10.encoders import (
     WPS10ExecuteResponseXMLEncoder
 )
@@ -115,11 +117,27 @@ class JobInitializationError(Exception):
     pass
 
 
-def accept_job(job_id, process, raw_inputs, resp_form, extra_parts):
+class _ProcessProvider(Component):
+    """ Component providing list of WPS Process components. """
+    #pylint: disable=too-few-public-methods
+    processes = ExtensionPoint(ProcessInterface)
+
+
+def get_process(process_id):
+    """ Get the WPS process for the given process identifier. """
+    for process in _ProcessProvider(env).processes:
+        is_async = getattr(process, 'asynchronous', False)
+        if is_async and process.identifier:
+            return process
+    raise ValueError("Invalid process identifier %r!" % process_id)
+
+
+def accept_job(job_id, process_id, raw_inputs, resp_form, extra_parts):
     """ Accept the received task. """
     check_job_id(job_id)
     conf = get_wps_config()
     logger = get_job_logger(job_id, LOGGER_NAME)
+    process = get_process(process_id)
     encoder = WPS10ExecuteResponseXMLEncoder(process, resp_form, raw_inputs)
     context = Context(encoder, **get_context_args(job_id, False, logger, conf))
     with context:
@@ -136,7 +154,7 @@ def accept_job(job_id, process, raw_inputs, resp_form, extra_parts):
         context.set_accepted()
 
 
-def execute_job(job_id, process, raw_inputs, resp_form, extra_parts):
+def execute_job(job_id, process_id, raw_inputs, resp_form, extra_parts):
     """ Asynchronous process execution. """
     # A generic logger is needed to allow exception logging before
     # the context specific logger adapter is created.
@@ -146,6 +164,7 @@ def execute_job(job_id, process, raw_inputs, resp_form, extra_parts):
         # Replace the generic logger with the context specific adapter.
         logger = get_job_logger(job_id, LOGGER_NAME) #pylint: disable=redefined-variable-type
         conf = get_wps_config()
+        process = get_process(process_id)
         encoder = WPS10ExecuteResponseXMLEncoder(process, resp_form, raw_inputs)
         context = Context(
             encoder, **get_context_args(job_id, True, logger, conf)

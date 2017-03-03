@@ -68,9 +68,14 @@ class WPSAsyncBackendBase(Component):
         logger = get_job_logger(job_id, LOGGER_NAME)
 
         with self.client as client:
-            client.send(
-                ("EXECUTE", job_id, process, raw_inputs, resp_form, extra_parts)
-            )
+            client.send((
+                "EXECUTE",
+                job_id,
+                process.identifier,
+                raw_inputs,
+                resp_form,
+                extra_parts
+            ))
             response = client.recv()
 
         if response[0] == "OK":
