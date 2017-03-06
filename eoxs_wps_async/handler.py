@@ -127,7 +127,7 @@ def get_process(process_id):
     """ Get the WPS process for the given process identifier. """
     for process in _ProcessProvider(env).processes:
         is_async = getattr(process, 'asynchronous', False)
-        if is_async and process.identifier:
+        if is_async and process.identifier == process_id:
             return process
     raise ValueError("Invalid process identifier %r!" % process_id)
 
