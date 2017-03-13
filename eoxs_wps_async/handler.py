@@ -140,7 +140,9 @@ def accept_job(job_id, process_id, raw_inputs, resp_form, extra_parts):
     logger = get_job_logger(job_id, LOGGER_NAME)
     process = get_process(process_id)
     encoder = WPS10ExecuteResponseXMLEncoder(process, resp_form, raw_inputs)
-    context = Context(encoder, **get_context_args(job_id, False, logger, conf))
+    context = Context(
+        encoder, process, **get_context_args(job_id, False, logger, conf)
+    )
     with context:
         # optional process initialization
         if hasattr(process, 'initialize'):
@@ -170,7 +172,7 @@ def execute_job(job_id, process_id, raw_inputs, resp_form, extra_parts):
         process = get_process(process_id)
         encoder = WPS10ExecuteResponseXMLEncoder(process, resp_form, raw_inputs)
         context = Context(
-            encoder, **get_context_args(job_id, True, logger, conf)
+            encoder, process, **get_context_args(job_id, True, logger, conf)
         )
         with context:
             context.set_started()

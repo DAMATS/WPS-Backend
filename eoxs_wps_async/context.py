@@ -179,7 +179,7 @@ class Context(PathContext):
     """
     RESPONSE_FILE = "executeResponse.xml"
 
-    def __init__(self, encoder, *args, **kwargs):
+    def __init__(self, encoder, callbacks=None, *args, **kwargs):
         """ Inputs:
             encoder     - execute response encoder
             path_temp   - temporary storage path (aka workspace)
@@ -196,7 +196,14 @@ class Context(PathContext):
             self._url_base, self.RESPONSE_FILE
         )
         self.encoder = encoder
+        self.callbacks = callbacks
         self._progress = 0
+
+    def _callback(self, name, *args, **kwargs):
+        """ Execute user-defined callback. """
+        callback = getattr(self.callbacks, name, None)
+        if callback:
+            callback(self, *args, **kwargs)
 
     @property
     def status_location(self):
@@ -215,31 +222,39 @@ class Context(PathContext):
         """ Set the StatusAccepted stored response.
         """
         self.logger.info("status: ACCEPTED")
+        self._callback('on_accepted')
         return self.update_response(self.encoder.encode_accepted())
 
     def set_succeeded(self, outputs):
         """ Set the StatusSucceeded stored response.
         """
         self.logger.info("status: SUCCEEDED")
+        self._callback('on_succeeded', outputs)
         return self.update_response(self.encoder.encode_response(outputs))
 
     def set_failed(self, exception):
         """ Set the StatusAccepted stored response.
         """
         self.logger.info("status: FAILED")
+        self._callback('on_failed', exception)
         return self.update_response(self.encoder.encode_failed(exception))
 
     def set_started(self, progress=None, message=None):
-
         """ Set the StatusStarted response with the new progress
         expressed in percent.  The progress therefore must be a number
         between 0 and 99.
+
+        NOTE: This method should be called only when the process gets called
+        first time or resumed after pause.  For the regular progress updates
+        use update_progress() method.
         """
         if progress is not None:
-            self._progress = progress
+            assert 0 <= progress < 100
+            self._progress = int(progress)
         self.logger.info(
             "status: STARTED %d%% %s", self._progress, message or ""
         )
+        self._callback('on_started', self._progress, message)
         return self.update_response(
             self.encoder.encode_started(self._progress, message)
         )
@@ -250,10 +265,10 @@ class Context(PathContext):
         between 0 and 99.
         """
         if progress is not None:
-            self._progress = progress
-        self.logger.info(
-            "status: PAUSED %d%% %s", self._progress, message or ""
-        )
+            assert 0 <= progress < 100
+            self._progress = int(progress)
+        self.logger.info("status: PAUSED %d%%", self._progress)
+        self._callback('on_paused', self._progress)
         return self.update_response(self.encoder.encode_paused(self._progress))
 
     def update_progress(self, progress, message):
@@ -261,4 +276,12 @@ class Context(PathContext):
         expressed in percent.  The progress therefore must be a number
         between 0 and 99.  An optional message can be specified.
         """
-        self.set_started(progress, message)
+        assert 0 <= progress < 100
+        self._progress = int(progress)
+        self.logger.info(
+            "status: STARTED %d%% %s", self._progress, message or ""
+        )
+        self._callback('on_progress_update', self._progress, message)
+        return self.update_response(
+            self.encoder.encode_started(self._progress, message)
+        )
