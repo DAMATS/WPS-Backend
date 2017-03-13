@@ -52,7 +52,7 @@ from eoxs_wps_async.util.thread import ThreadSet, Queue
 from eoxs_wps_async.util.ipc import get_listener
 from eoxs_wps_async.handler import (
     check_job_id, get_task_path, accept_job, execute_job, purge_job, reset_job,
-    is_valid_job_id, JobInitializationError,
+    is_valid_job_id, JobInitializationError, OWS10Exception,
 )
 
 LOGGER_NAME = "eoxs_wps_async.daemon"
@@ -140,7 +140,6 @@ class WorkerPoolManager(Thread):
                             "Failed to unpickle job %s! The job is ignored!"
                         )
                     self._pool.apply_async(
-                        #execute_job, job, callback=worker_callback
                         execute_job, job, callback=callback
                     )
                     logger.debug("WPM: APPLIED JOB")
@@ -403,6 +402,8 @@ class Daemon(object):
                 # get status of a job
             else:
                 ValueError("Unknown request! REQ=%r" % request[0])
+        except OWS10Exception as exc:
+            return "OWSEXC", exc
         except JobInitializationError as exc:
             # error in the user-defined process initialization
             return "ERROR", str(exc)

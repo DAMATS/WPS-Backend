@@ -39,6 +39,7 @@ from urlparse import urljoin
 from eoxserver.core import Component, ExtensionPoint, env
 from eoxserver.services.ows.wps.util import InMemoryURLResolver
 from eoxserver.services.ows.wps.interfaces import ProcessInterface
+from eoxserver.services.ows.wps.exceptions import OWS10Exception
 from eoxserver.services.ows.wps.v10.encoders import (
     WPS10ExecuteResponseXMLEncoder
 )
@@ -145,6 +146,8 @@ def accept_job(job_id, process_id, raw_inputs, resp_form, extra_parts):
         if hasattr(process, 'initialize'):
             try:
                 process.initialize(context, raw_inputs, resp_form, extra_parts)
+            except OWS10Exception:
+                raise
             except Exception as exception: # pylint: disable=broad-except
                 error_message = "%s: %s" % (type(exception).__name__, exception)
                 logger.debug(error_message)

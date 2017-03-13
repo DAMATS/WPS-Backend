@@ -82,6 +82,8 @@ class WPSAsyncBackendBase(Component):
             return job_id
         elif response[0] == "BUSY":
             raise ServerBusy("The server is busy!")
+        elif response[0] == "OWSEXC":
+            raise response[1]
         elif response[0] == "ERROR":
             raise NoApplicableCode(response[1], "eoxs_wps_async.daemon")
         else:
