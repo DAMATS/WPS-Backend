@@ -203,7 +203,11 @@ class Context(PathContext):
         """ Execute user-defined callback. """
         callback = getattr(self.callbacks, name, None)
         if callback:
-            callback(self, *args, **kwargs)
+            try:
+                callback(self, *args, **kwargs)
+            except Exception:
+                self.logger.error("Context %r callback failed!", name)
+                raise
 
     @property
     def status_location(self):
