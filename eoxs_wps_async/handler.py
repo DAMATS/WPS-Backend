@@ -197,7 +197,7 @@ def execute_job(job_id, process_id, raw_inputs, resp_form, extra_parts):
                     pack_outputs(outputs, resp_form, output_defs)
                 )
             except Exception as exception: # pylint: disable=broad-except
-                logger.debug("%s %s", type(exception).__name__, exception)
+                logger.debug("%s: %s", type(exception).__name__, exception)
                 for line in format_exc().split("\n"):
                     logger.debug(line)
                 context.set_failed(exception)
@@ -209,7 +209,7 @@ def execute_job(job_id, process_id, raw_inputs, resp_form, extra_parts):
                     logger.debug("removed %s", task_file)
 
     except Exception as exception: # pylint: disable=broad-except
-        logger.error("%s %s", type(exception).__name__, exception)
+        logger.error("%s: %s", type(exception).__name__, exception)
         for line in format_exc().split("\n"):
             logger.debug(line)
         return exception
