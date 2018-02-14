@@ -54,7 +54,7 @@ class ThreadSet(object):
 
     @locked
     def remove(self, item):
-        """ Remove an item to the set. """
+        """ Remove an item from the set. """
         self._tset.remove(item)
 
     @locked
