@@ -99,10 +99,14 @@ class Client(object):
 
     def send(self, obj):
         """ Send an object. """
+        if not self._conn:
+            raise ConnectionError("No connection to the daemon socket!")
         self._conn.send(obj)
 
     def recv(self):
         """ Receive an object. """
+        if not self._conn:
+            raise ConnectionError("No connection to the daemon socket!")
         start_time = time()
         try:
             while True:
