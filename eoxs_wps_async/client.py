@@ -61,7 +61,6 @@ class Client(object):
         self._conn_timeout = connection_timeout
         self.socket_address = socket_filename
         self.socket_family = 'AF_UNIX'
-        self.socket_args = ()
         self.socket_kwargs = {}
 
     def __del__(self):
@@ -81,8 +80,7 @@ class Client(object):
         if not self._conn:
             try:
                 self._conn = get_client(
-                    self.socket_address, self.socket_family,
-                    *self.socket_args, **self.socket_kwargs
+                    self.socket_address, self.socket_family, **self.socket_kwargs
                 )
             except SocketError as exc:
                 if exc.errno == errno.ENOENT:

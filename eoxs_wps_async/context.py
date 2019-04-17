@@ -179,7 +179,7 @@ class Context(PathContext):
     """
     RESPONSE_FILE = "executeResponse.xml"
 
-    def __init__(self, encoder, callbacks=None, *args, **kwargs):
+    def __init__(self, encoder, callbacks=None, **kwargs):
         """ Inputs:
             encoder     - execute response encoder
             path_temp   - temporary storage path (aka workspace)
@@ -191,7 +191,7 @@ class Context(PathContext):
                           exist but later it must exists. Whether the output
                           bucket exists or not is controlled by this process.
         """
-        super(Context, self).__init__(*args, **kwargs)
+        super(Context, self).__init__(**kwargs)
         encoder.status_location = urljoin(
             self._url_base, self.RESPONSE_FILE
         )

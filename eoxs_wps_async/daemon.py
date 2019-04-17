@@ -265,7 +265,6 @@ class Daemon(object):
                  max_queued_jobs=8, logger=None):
         self.socket_address = socket_filename
         self.socket_family = 'AF_UNIX'
-        self.socket_args = ()
         self.socket_kwargs = {}
         self.socket_listener = None
         self.connection_semaphore = Semaphore(max_connections)
@@ -301,8 +300,7 @@ class Daemon(object):
             # create the listener for incoming connections
             self.logger.info("Listening at %s ...", self.socket_address)
             self.socket_listener = get_listener(
-                self.socket_address, self.socket_family,
-                *self.socket_args, **self.socket_kwargs
+                self.socket_address, self.socket_family, **self.socket_kwargs
             )
             # load pickled jobs left from the previous run
             self.logger.info("Loading stored jobs ...")
@@ -318,7 +316,7 @@ class Daemon(object):
                     self.connection_poll_timeout,
                 ).start()
         except SocketError as exc:
-            self.logger.error("SocketError: %s" % exc)
+            self.logger.error("SocketError: %s", exc)
         finally:
             self.cleanup()
 
@@ -431,8 +429,8 @@ class Daemon(object):
         for ctime, job_id in jobs:
             reset_job(job_id)
             self.job_queue.put((datetime.utcfromtimestamp(ctime), job_id))
-            self.logger.debug("Enqueued job %s." % job_id)
-        self.logger.info("Loaded %d stored jobs." % len(jobs))
+            self.logger.debug("Enqueued job %s.", job_id)
+        self.logger.info("Loaded %d stored jobs.", len(jobs))
 
 
 def main(argv):
@@ -482,6 +480,8 @@ def main(argv):
         for line in format_exc().split("\n"):
             logger.error(line)
         raise
+
+    return 0
 
 
 if __name__ == "__main__":

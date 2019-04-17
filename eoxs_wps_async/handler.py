@@ -167,7 +167,7 @@ def execute_job(job_id, process_id, raw_inputs, resp_form, extra_parts):
     try:
         check_job_id(job_id)
         # Replace the generic logger with the context specific adapter.
-        logger = get_job_logger(job_id, LOGGER_NAME) #pylint: disable=redefined-variable-type
+        logger = get_job_logger(job_id, LOGGER_NAME)
         conf = get_wps_config()
         process = get_process(process_id)
         encoder = WPS10ExecuteResponseXMLEncoder(process, resp_form, raw_inputs)

@@ -1,6 +1,6 @@
 #-------------------------------------------------------------------------------
 #
-# IPC utilities 
+# IPC utilities
 #
 # Project: asynchronous WPS back-end
 # Authors: Martin Paces <martin.paces@eox.at>
@@ -30,20 +30,20 @@
 from os import makedirs, chmod
 from os.path import dirname, isdir
 from multiprocessing.connection import Listener, Client
-import socket
-import errno
 
-def get_listener(address, family='AF_UNIX', *argv, **kwarg):
+
+def get_listener(address, family='AF_UNIX', **kwarg):
     """ Get IPC socket listener. """
     # Make sure the socket file directory exists.
     if family == 'AF_UNIX' and not isdir(dirname(address)):
         makedirs(dirname(address), 0700)
-    connection = Listener(address, family, *argv, **kwarg)
+    connection = Listener(address, family=family, **kwarg)
     if family == 'AF_UNIX':
         chmod(address, 0700)
     return connection
 
-def get_client(address, family='AF_UNIX', *argv, **kwarg):
+
+def get_client(address, family='AF_UNIX', **kwarg):
     """ Get IPC socket client connection. """
-    connection = Client(address, family='AF_UNIX', *argv, **kwarg)
+    connection = Client(address, family=family, **kwarg)
     return connection
