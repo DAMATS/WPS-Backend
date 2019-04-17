@@ -262,6 +262,7 @@ class Daemon(object):
 
     def __init__(self, socket_filename, max_connections=64,
                  connection_timeout=10, poll_timeout=1, num_workers=1,
+                 num_worker_processes=2, max_processed_jobs=1,
                  max_queued_jobs=8, logger=None):
         self.socket_address = socket_filename
         self.socket_family = 'AF_UNIX'
@@ -280,7 +281,10 @@ class Daemon(object):
         mp_util.get_logger().setLevel(mp_util.SUBWARNING)
         worker_semaphore = ProcessSemaphore(num_workers)
 
-        self.worker_pool = ProcessPool(num_workers, init_worker)
+        self.worker_pool = ProcessPool(
+            max(num_workers, num_worker_processes), init_worker,
+            maxtasksperchild=max_processed_jobs,
+        )
         self.worker_pool_manager = WorkerPoolManager(
             self.worker_pool, worker_semaphore, self.job_queue
         )
@@ -467,12 +471,14 @@ def main(argv):
 
     try:
         Daemon(
-            conf.socket_file,
-            conf.socket_max_connections,
-            conf.socket_connection_timeout,
-            conf.socket_poll_timeout,
-            conf.num_workers,
-            conf.max_queued_jobs,
+            socket_filename=conf.socket_file,
+            max_connections=conf.socket_max_connections,
+            connection_timeout=conf.socket_connection_timeout,
+            poll_timeout=conf.socket_poll_timeout,
+            num_workers=conf.num_workers,
+            num_worker_processes=conf.num_worker_processes,
+            max_processed_jobs=conf.max_processed_jobs,
+            max_queued_jobs=conf.max_queued_jobs,
             logger=logger,
         ).run()
     except Exception as exc:

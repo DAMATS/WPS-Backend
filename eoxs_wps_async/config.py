@@ -27,6 +27,7 @@
 # THE SOFTWARE.
 #-------------------------------------------------------------------------------
 
+from ConfigParser import NoOptionError, NoSectionError
 from eoxserver.core.decoders.config import Reader, Option
 from eoxserver.core.config import get_eoxserver_config
 
@@ -47,6 +48,9 @@ DEF_NUMBER_OF_WORKERS = 1
 
 # default allowed maximum of queued jobs
 DEF_MAX_QUEUED_JOBS = 64
+
+# default number of processed jobs before worker restarts
+DEF_MAX_NUMBER_OF_PROCESSED_JOBS = 1
 
 
 def positive_int(value):
@@ -96,9 +100,21 @@ class WPSConfigReader(Reader):
     num_workers = Option(
         type=positive_int, default=DEF_NUMBER_OF_WORKERS
     )
+    max_processed_jobs = Option(
+        type=positive_int, default=DEF_MAX_NUMBER_OF_PROCESSED_JOBS
+    )
     max_queued_jobs = Option(
         type=positive_int, default=DEF_MAX_QUEUED_JOBS
     )
+
+    @property
+    def num_worker_processes(self):
+        try:
+            return max(self.num_workers, positive_int(self._config.get(
+                self.section, 'num_worker_processes'
+            )))
+        except (NoOptionError, NoSectionError):
+            return 2*self.num_workers
 
 
 _WPS_CONFIG = None
