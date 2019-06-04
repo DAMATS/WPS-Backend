@@ -43,6 +43,7 @@ from eoxs_wps_async.handler import (
 
 LOGGER_NAME = "eoxserver.services.ows.wps"
 
+
 class WPSAsyncBackendBase(Component):
     """ Simple testing WPS fake asynchronous back-end. """
     implements(AsyncBackendInterface)

@@ -54,15 +54,18 @@ from eoxs_wps_async.context import Context
 LOGGER_NAME = "eoxserver.services.ows.wps"
 RE_JOB_ID = re.compile(r'^[A-Za-z0-9_][A-Za-z0-9_.-]*$')
 
+
 def is_valid_job_id(job_id):
     """ Return true for a valid job id."""
     return bool((isinstance(job_id, basestring) and RE_JOB_ID.match(job_id)))
+
 
 def check_job_id(job_id):
     """ Check job id. """
     if not is_valid_job_id(job_id):
         raise ValueError("Invalid job identifier %r!" % job_id)
     return job_id
+
 
 def get_job_logger(job_id, logger_name):
     """ Custom logger. """

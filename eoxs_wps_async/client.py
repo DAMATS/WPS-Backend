@@ -37,11 +37,14 @@ from eoxs_wps_async.util.ipc import get_client
 class ClientError(IOError):
     """ Client error. """
 
+
 class ConnectionError(ClientError):
     """ Failed to connect to the processing daemon. """
 
+
 class ConnectionTimeout(ClientError):
     """ Client connection time-out. """
+
 
 class ConnectionClosed(ClientError):
     """ Client connection closed. """
@@ -88,7 +91,6 @@ class Client(object):
                         "Failed to connect to the daemon socket!"
                     )
 
-
     def close(self):
         """ Close connection. """
         if self._conn:
@@ -115,5 +117,5 @@ class Client(object):
                     raise ConnectionTimeout("Connection timed out!")
         except EOFError:
             ConnectionClosed(
-                "Connection closed before receiving the response.!"
+                "Connection closed before receiving any response!"
             )

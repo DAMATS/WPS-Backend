@@ -57,6 +57,7 @@ from eoxs_wps_async.handler import (
 
 LOGGER_NAME = "eoxs_wps_async.daemon"
 
+
 def error(message, *args):
     """ Print error message. """
     print >>stderr, "ERROR: %s" % (message % args)
@@ -403,7 +404,7 @@ class Daemon(object):
             #elif action == "STATUS":
                 # get status of a job
             else:
-                ValueError("Unknown request! REQ=%r" % request[0])
+                raise ValueError("Unknown request! REQ=%r" % request[0])
         except OWS10Exception as exc:
             return "OWSEXC", exc
         except JobInitializationError as exc:
