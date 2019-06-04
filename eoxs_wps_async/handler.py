@@ -49,7 +49,7 @@ from eoxserver.services.ows.wps.v10.execute_util import (
 
 from eoxs_wps_async.util import fix_dir, JobLoggerAdapter
 from eoxs_wps_async.config import get_wps_config
-from eoxs_wps_async.context import Context
+from eoxs_wps_async.context import Context, BaseContext
 
 LOGGER_NAME = "eoxserver.services.ows.wps"
 RE_JOB_ID = re.compile(r'^[A-Za-z0-9_][A-Za-z0-9_.-]*$')
@@ -220,17 +220,26 @@ def execute_job(job_id, process_id, raw_inputs, resp_form, extra_parts):
         return None
 
 
-def purge_job(job_id, logger=None):
+def purge_job(job_id, process_id=None, logger=None):
     """ Purge the job from the system by removing all the resources
     occupied by the job.
     """
     check_job_id(job_id)
     conf = get_wps_config()
+
+    if not logger:
+        logger = get_job_logger(job_id, LOGGER_NAME)
+
     _remove_paths([
         get_task_path(job_id, conf),
         get_perm_path(job_id, conf),
         get_temp_path(job_id, conf),
-    ], logger or get_job_logger(job_id, LOGGER_NAME))
+    ], logger)
+
+    if process_id:
+        process = get_process(process_id)
+        if hasattr(process, 'discard'):
+            process.discard(BaseContext(job_id, logger))
 
 
 def reset_job(job_id, logger=None):

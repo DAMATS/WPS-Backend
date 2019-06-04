@@ -33,9 +33,30 @@ from os import makedirs, chdir, rmdir, listdir
 from os.path import join, isfile, isdir, exists, relpath, dirname
 from shutil import move, rmtree
 from urlparse import urljoin
-from eoxserver.services.ows.wps.context import BaseContext, ContextError
+from eoxserver.services.ows.wps.context import (
+    BaseContext as BaseWpsContext, ContextError,
+)
 
 LOGGER_NAME = "eoxserver.services.ows.wps"
+
+
+class BaseContext(BaseWpsContext):
+    """ Base context class providing the identifier and logger properties. """
+
+    def __init__(self, identifier, logger=None):
+        super(BaseContext, self).__init__()
+        self._identifier = identifier
+        self._logger = logger or getLogger(__name__)
+
+    @property
+    def identifier(self):
+        """ Get the context job id."""
+        return self._identifier
+
+    @property
+    def logger(self):
+        """ Get the context specific logger."""
+        return self._logger
 
 
 class PathContext(BaseContext):
@@ -52,17 +73,6 @@ class PathContext(BaseContext):
     The permanent storage contains the processing outputs and it exists
     even after the process termination.
     """
-
-    @property
-    def identifier(self):
-        """ Get the context job id."""
-        return self._identifier
-
-    @property
-    def logger(self):
-        """ Get the context specific logger."""
-        return self._logger
-
     def __init__(self, identifier, path_temp, path_perm, url_base, logger=None,
                  path_perm_exists=False):
         """ Inputs:
@@ -76,9 +86,7 @@ class PathContext(BaseContext):
                           exist but later it must exists. Whether the output
                           bucket exists or not is controlled by this process.
         """
-        super(PathContext, self).__init__()
-        self._identifier = identifier
-        self._logger = logger or getLogger(__name__)
+        super(PathContext, self).__init__(identifier, logger=logger)
         self._path_temp = path_temp
         self._path_perm = path_perm
         self._url_base = url_base if url_base[-1] == '/' else url_base + '/'

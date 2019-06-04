@@ -377,6 +377,7 @@ class Daemon(object):
                 timestamp = datetime.utcnow()
                 # check that job id can be used in file-system paths (security)
                 job_id = check_job_id(payload[0])
+                process_id = payload[1]
                 try:
                     # save the pickle the job (persistence)
                     with open(get_task_path(job_id), "wb") as fobj:
@@ -386,10 +387,10 @@ class Daemon(object):
                     # enqueue the job for execution
                     self.job_queue.put((timestamp, job_id))
                 except self.job_queue.Full:
-                    purge_job(job_id)
+                    purge_job(job_id, process_id)
                     return "BUSY",
                 except:
-                    purge_job(job_id)
+                    purge_job(job_id, process_id)
                     raise
             elif action == "PURGE":
                 # wipe out job and all resources it uses
