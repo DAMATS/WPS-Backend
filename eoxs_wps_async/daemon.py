@@ -454,16 +454,16 @@ def main(argv):
         if path not in sys.path:
             sys.path.append(path)
 
-    # initialize the EOxServer component system.
-    # ... set temporary stderr stream log handler to see the components' imports
+    # handling log-messages
     set_stream_handler(getLogger(), INFO)
-    eoxs_initialize()
 
     # initialize Django
     django.setup()
 
-    # kick in logger
-    # initialize Django
+    # initialize the EOxServer component system.
+    eoxs_initialize()
+
+    # setup daemon logger
     logger = getLogger(LOGGER_NAME)
     set_stream_handler(logger, INFO)
     logger.info("Daemon is initialized.")
