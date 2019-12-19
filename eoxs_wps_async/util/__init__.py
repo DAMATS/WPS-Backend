@@ -1,10 +1,8 @@
 #-------------------------------------------------------------------------------
 #
-# General utilities
+# Asynchronous WPS back-end - utilities
 #
-# Project: asynchronous WPS back-end
 # Authors: Martin Paces <martin.paces@eox.at>
-#
 #-------------------------------------------------------------------------------
 # Copyright (C) 2016 EOX IT Services GmbH
 #
@@ -29,8 +27,9 @@
 
 from logging import LoggerAdapter
 
-class cached_property(object):
-    # pylint: disable=too-few-public-methods, invalid-name, redefined-builtin
+
+class cached_property():
+    # pylint: disable=too-few-public-methods, invalid-name
     """
     Decorator that converts a method with a single self argument into a
     property cached on the instance.
@@ -39,6 +38,7 @@ class cached_property(object):
         self.func = func
 
     def __get__(self, instance, type=None):
+        # pylint: disable=redefined-builtin
         if instance is None:
             return self
         res = instance.__dict__[self.func.__name__] = self.func(instance)

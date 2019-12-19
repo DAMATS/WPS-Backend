@@ -1,10 +1,8 @@
 #-------------------------------------------------------------------------------
 #
-# Storage context class
+# Asynchronous WPS back-end - storage context class
 #
-# Project: EOxServer <http://eoxserver.org>
 # Authors: Martin Paces <martin.paces@eox.at>
-#
 #-------------------------------------------------------------------------------
 # Copyright (C) 2016 EOX IT Services GmbH
 #
@@ -32,7 +30,7 @@ from logging import getLogger
 from os import makedirs, chdir, rmdir, listdir
 from os.path import join, isfile, isdir, exists, relpath, dirname
 from shutil import move, rmtree
-from urlparse import urljoin
+from urllib.parse import urljoin
 from eoxserver.services.ows.wps.context import (
     BaseContext as BaseWpsContext, ContextError,
 )
@@ -75,6 +73,7 @@ class PathContext(BaseContext):
     """
     def __init__(self, identifier, path_temp, path_perm, url_base, logger=None,
                  path_perm_exists=False):
+        # pylint: disable=too-many-arguments
         """ Inputs:
             identifier  - a unique identifier of the context (job id.)
             path_temp   - temporary storage path (aka workspace)
@@ -136,7 +135,7 @@ class PathContext(BaseContext):
         self.logger.debug("dir. changed to  %s", self._path_temp)
         return self
 
-    def __exit__(self, type, value, traceback):
+    def __exit__(self, type, value, traceback): # pylint: disable=redefined-builtin
         # remove workspace
         self.logger.info("Context released.")
         if isdir(self._path_temp):

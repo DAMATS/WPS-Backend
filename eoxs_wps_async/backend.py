@@ -1,10 +1,8 @@
 #-------------------------------------------------------------------------------
 #
-# The actual implementation of the AsyncBackendInterface EOxServer component.
+# Asynchronous WPS back-end - implementation of the AsyncBackendInterface
 #
-# Project: asynchronous WPS back-end
 # Authors: Martin Paces <martin.paces@eox.at>
-#
 #-------------------------------------------------------------------------------
 # Copyright (C) 2016 EOX IT Services GmbH
 #
@@ -30,8 +28,6 @@
 
 from uuid import uuid4
 
-from eoxserver.core import Component, implements
-from eoxserver.services.ows.wps.interfaces import AsyncBackendInterface
 from eoxserver.services.ows.wps.exceptions import ServerBusy, NoApplicableCode
 
 from eoxs_wps_async.util import cached_property
@@ -44,9 +40,8 @@ from eoxs_wps_async.handler import (
 LOGGER_NAME = "eoxserver.services.ows.wps"
 
 
-class WPSAsyncBackendBase(Component):
+class WPSAsyncBackendBase():
     """ Simple testing WPS fake asynchronous back-end. """
-    implements(AsyncBackendInterface)
     supported_versions = ("1.0.0",)
 
     @cached_property
@@ -81,16 +76,15 @@ class WPSAsyncBackendBase(Component):
 
         if response[0] == "OK":
             return job_id
-        elif response[0] == "BUSY":
+        if response[0] == "BUSY":
             raise ServerBusy("The server is busy!")
-        elif response[0] == "OWSEXC":
+        if response[0] == "OWSEXC":
             raise response[1]
-        elif response[0] == "ERROR":
+        if response[0] == "ERROR":
             raise NoApplicableCode(response[1], "eoxs_wps_async.daemon")
-        else:
-            message = "Unknown response! RESP=%r" % response[0]
-            logger.error(message)
-            raise ValueError(message)
+        message = "Unknown response! RESP=%r" % response[0]
+        logger.error(message)
+        raise ValueError(message)
 
     def get_response_url(self, job_id):
         """ Return response URL for the given job identifier. """
@@ -115,9 +109,8 @@ class WPSAsyncBackendBase(Component):
 
         if response[0] == "OK":
             return
-        elif response[0] == "ERROR":
+        if response[0] == "ERROR":
             raise ClientError(response[1])
-        else:
-            message = "Unknown response! RESP=%r" % response[0]
-            logger.error(message)
-            raise ValueError(message)
+        message = "Unknown response! RESP=%r" % response[0]
+        logger.error(message)
+        raise ValueError(message)

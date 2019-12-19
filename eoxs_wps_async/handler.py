@@ -1,10 +1,8 @@
 #-------------------------------------------------------------------------------
 #
-# The WPS back-end low level handlers and their utilities
+# Asynchronous WPS back-end - low-level handlers and utilities
 #
-# Project: asynchronous WPS back-end
 # Authors: Martin Paces <martin.paces@eox.at>
-#
 #-------------------------------------------------------------------------------
 # Copyright (C) 2016 EOX IT Services GmbH
 #
@@ -29,16 +27,14 @@
 # pylint: disable=unused-argument, too-many-arguments, too-many-locals
 
 import re
+import sys
 from traceback import format_exc
 from logging import getLogger
 from os import remove
 from os.path import join, isdir, isfile
 from shutil import rmtree
-from urlparse import urljoin
-
-from eoxserver.core import Component, ExtensionPoint, env
-from eoxserver.services.ows.wps.util import InMemoryURLResolver
-from eoxserver.services.ows.wps.interfaces import ProcessInterface
+from urllib.parse import urljoin
+from eoxserver.services.ows.wps.util import InMemoryURLResolver, get_processes
 from eoxserver.services.ows.wps.exceptions import OWS10Exception
 from eoxserver.services.ows.wps.v10.encoders import (
     WPS10ExecuteResponseXMLEncoder
@@ -53,6 +49,11 @@ from eoxs_wps_async.context import Context, BaseContext
 
 LOGGER_NAME = "eoxserver.services.ows.wps"
 RE_JOB_ID = re.compile(r'^[A-Za-z0-9_][A-Za-z0-9_.-]*$')
+
+
+if sys.version_info > (3, 0):
+    # Python 2.x compatibility
+    basestring = str # pylint: disable=invalid-name
 
 
 def is_valid_job_id(job_id):
@@ -118,18 +119,11 @@ def get_context_args(job_id, path_perm_exists=False, logger=None, conf=None):
 
 class JobInitializationError(Exception):
     """ Job initialization error. """
-    pass
-
-
-class _ProcessProvider(Component):
-    """ Component providing list of WPS Process components. """
-    #pylint: disable=too-few-public-methods
-    processes = ExtensionPoint(ProcessInterface)
 
 
 def get_process(process_id):
     """ Get the WPS process for the given process identifier. """
-    for process in _ProcessProvider(env).processes:
+    for process in get_processes():
         is_async = getattr(process, 'asynchronous', False)
         if is_async and process.identifier == process_id:
             return process

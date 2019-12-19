@@ -1,10 +1,8 @@
 #-------------------------------------------------------------------------------
 #
-# Processing daemon.
+# Asynchronous WPS back-end - processing daemon
 #
-# Project: asynchronous WPS back-end
 # Authors: Martin Paces <martin.paces@eox.at>
-#
 #-------------------------------------------------------------------------------
 # Copyright (C) 2016 EOX IT Services GmbH
 #
@@ -40,13 +38,11 @@ from traceback import format_exc
 from socket import error as SocketError
 from signal import SIGINT, SIGTERM, signal, SIG_IGN
 from threading import Thread, Semaphore, Event
-import cPickle as pickle
+import pickle
 import multiprocessing.util as mp_util
 from multiprocessing import Semaphore as ProcessSemaphore, Pool as ProcessPool
-
 import django
 from eoxserver.core import initialize as eoxs_initialize
-
 from eoxs_wps_async.config import get_wps_config
 from eoxs_wps_async.util.thread import ThreadSet, Queue
 from eoxs_wps_async.util.ipc import get_listener
@@ -60,13 +56,14 @@ LOGGER_NAME = "eoxs_wps_async.daemon"
 
 def error(message, *args):
     """ Print error message. """
-    print >>stderr, "ERROR: %s" % (message % args)
+    print("ERROR: %s" % (message % args), file=stderr)
 
 
 def usage(exename):
     """ Print simple usage. """
-    print >>stderr, (
-        "USAGE: %s <eoxs-settings-module> [<eoxs-instance-path>]" % exename
+    print(
+        "USAGE: %s <eoxs-settings-module> [<eoxs-instance-path>]" % exename,
+        file=stderr
     )
 
 
@@ -248,7 +245,7 @@ class ConnectionHandler(Thread):
                 self._thread_group.remove(self)
 
 
-class Daemon(object):
+class Daemon():
     """ Task scheduling daemon.
 
     Parameters:
@@ -362,11 +359,11 @@ class Daemon(object):
 
     def busy_response(self):
         """ Busy response. """
-        return "BUSY",
+        return ("BUSY",)
 
     def timeout_response(self):
         """ Timeout response. """
-        return "TIMEOUT",
+        return ("TIMEOUT",)
 
     def request_handler(self, request):
         """ Request handler. """
@@ -388,7 +385,7 @@ class Daemon(object):
                     self.job_queue.put((timestamp, job_id))
                 except self.job_queue.Full:
                     purge_job(job_id, process_id)
-                    return "BUSY",
+                    return ("BUSY",)
                 except:
                     purge_job(job_id, process_id)
                     raise
@@ -407,19 +404,19 @@ class Daemon(object):
             else:
                 raise ValueError("Unknown request! REQ=%r" % request[0])
         except OWS10Exception as exc:
-            return "OWSEXC", exc
+            return ("OWSEXC", exc)
         except JobInitializationError as exc:
             # error in the user-defined process initialization
-            return "ERROR", str(exc)
+            return ("ERROR", str(exc))
         except Exception as exc: #pylint: disable=broad-except
             # error in the handler code
             error_message = "%s: %s" % (type(exc).__name__, exc)
             self.logger.error(error_message)
             for line in format_exc().split("\n"):
                 self.logger.error(line)
-            return "ERROR", error_message
+            return ("ERROR", error_message)
         else:
-            return "OK",
+            return ("OK",)
 
     def load_tasks(self):
         """ Load tasks after server restart. """
