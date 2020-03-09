@@ -1,10 +1,8 @@
 #-------------------------------------------------------------------------------
 #
-# Configuration parser.
+# Asynchronous WPS back-end - configuration parser
 #
-# Project: asynchronous WPS back-end
 # Authors: Martin Paces <martin.paces@eox.at>
-#
 #-------------------------------------------------------------------------------
 # Copyright (C) 2016 EOX IT Services GmbH
 #
@@ -27,7 +25,12 @@
 # THE SOFTWARE.
 #-------------------------------------------------------------------------------
 
-from ConfigParser import NoOptionError, NoSectionError
+try:
+    from configparser import NoOptionError, NoSectionError
+except ImportError:
+    # Python 2.*
+    from ConfigParser import NoOptionError, NoSectionError
+
 from eoxserver.core.decoders.config import Reader, Option
 from eoxserver.core.config import get_eoxserver_config
 
@@ -68,13 +71,11 @@ def positive_float_range(min_value, max_value):
         if min_value <= value <= max_value:
             if value > 0:
                 return value
-            else:
-                raise ValueError("Not a positive float!")
-        else:
-            raise ValueError(
-                "Float value is in the allowed range [%g, %g]!" %
-                (min_value, max_value)
-            )
+            raise ValueError("Not a positive float!")
+        raise ValueError(
+            "Float value is in the allowed range [%g, %g]!" %
+            (min_value, max_value)
+        )
     return _positive_float_range_
 
 
@@ -109,6 +110,7 @@ class WPSConfigReader(Reader):
 
     @property
     def num_worker_processes(self):
+        """ Get number of worker processes. """
         try:
             return max(self.num_workers, positive_int(self._config.get(
                 self.section, 'num_worker_processes'

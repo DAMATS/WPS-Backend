@@ -1,8 +1,8 @@
 #-------------------------------------------------------------------------------
 #
-# Project: asynchronous WPS back-end
-# Authors: Martin Paces <martin.paces@eox.at>
+# Asynchronous WPS back-end - EOxServer extension
 #
+# Authors: Martin Paces <martin.paces@eox.at>
 #-------------------------------------------------------------------------------
 # Copyright (C) 2016 EOX IT Services GmbH
 #
@@ -25,4 +25,4 @@
 # THE SOFTWARE.
 #-------------------------------------------------------------------------------
 
-__version__ = "0.4.2"
+__version__ = "0.5.0"

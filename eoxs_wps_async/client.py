@@ -1,10 +1,8 @@
 #-------------------------------------------------------------------------------
 #
-# Processing client
+# Asynchronous WPS back-end - client proxy
 #
-# Project: asynchronous WPS back-end
 # Authors: Martin Paces <martin.paces@eox.at>
-#
 #-------------------------------------------------------------------------------
 # Copyright (C) 2016 EOX IT Services GmbH
 #
@@ -26,31 +24,28 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 #-------------------------------------------------------------------------------
-# pylint: disable=
 
-import errno
 from time import time
-from socket import error as SocketError
-from eoxs_wps_async.util.ipc import get_client
+from .util.ipc import get_client
 
 
 class ClientError(IOError):
     """ Client error. """
 
 
-class ConnectionError(ClientError):
+class ClientConnectionError(ClientError):
     """ Failed to connect to the processing daemon. """
 
 
-class ConnectionTimeout(ClientError):
+class ClientConnectionTimeout(ClientError):
     """ Client connection time-out. """
 
 
-class ConnectionClosed(ClientError):
+class ClientConnectionClosed(ClientError):
     """ Client connection closed. """
 
 
-class Client(object):
+class Client():
     """ Client class.
 
     Parameters:
@@ -85,11 +80,10 @@ class Client(object):
                 self._conn = get_client(
                     self.socket_address, self.socket_family, **self.socket_kwargs
                 )
-            except SocketError as exc:
-                if exc.errno == errno.ENOENT:
-                    raise ConnectionError(
-                        "Failed to connect to the daemon socket!"
-                    )
+            except OSError:
+                raise ClientConnectionError(
+                    "Failed to connect to the daemon socket!"
+                )
 
     def close(self):
         """ Close connection. """
@@ -100,22 +94,22 @@ class Client(object):
     def send(self, obj):
         """ Send an object. """
         if not self._conn:
-            raise ConnectionError("No connection to the daemon socket!")
+            raise ClientConnectionError("No connection to the daemon socket!")
         self._conn.send(obj)
 
     def recv(self):
         """ Receive an object. """
         if not self._conn:
-            raise ConnectionError("No connection to the daemon socket!")
+            raise ClientConnectionError("No connection to the daemon socket!")
         start_time = time()
         try:
             while True:
                 timeout = max(0, self._conn_timeout + start_time - time())
                 if self._conn.poll(timeout):
                     return self._conn.recv()
-                elif (time() - start_time) > self._conn_timeout:
-                    raise ConnectionTimeout("Connection timed out!")
+                if (time() - start_time) > self._conn_timeout:
+                    raise ClientConnectionTimeout("Connection timed out!")
         except EOFError:
-            ConnectionClosed(
+            ClientConnectionClosed(
                 "Connection closed before receiving any response!"
             )

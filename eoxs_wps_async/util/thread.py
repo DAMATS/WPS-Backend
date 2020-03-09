@@ -1,10 +1,8 @@
 #-------------------------------------------------------------------------------
 #
-# threading utilities
+# Asynchronous WPS back-end - threading utilities
 #
-# Project: asynchronous WPS back-end
 # Authors: Martin Paces <martin.paces@eox.at>
-#
 #-------------------------------------------------------------------------------
 # Copyright (C) 2016 EOX IT Services GmbH
 #
@@ -31,6 +29,7 @@ from threading import Lock, Condition
 from functools import wraps
 from collections import deque
 
+
 def locked(func, lockname='_lock'):
     """ Thread-locking object method decorator. """
     @wraps(func)
@@ -40,7 +39,7 @@ def locked(func, lockname='_lock'):
     return _wrapper_
 
 
-class ThreadSet(object):
+class ThreadSet():
     """ Thread-safe set container. """
 
     def __init__(self):
@@ -64,16 +63,14 @@ class ThreadSet(object):
             yield item
 
 
-class Queue(object):
+class Queue():
     """ Simple thread-safe FIFO queue. """
 
     class Empty(Exception):
         """ Empty queue exception. """
-        pass
 
     class Full(Exception):
         """ Full queue exception. """
-        pass
 
     def __init__(self, maxsize=1, timeout=1.0):
         self._items = deque()

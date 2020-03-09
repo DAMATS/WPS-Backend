@@ -1,28 +1,29 @@
 # WPS-Backend
 
-This package implements simple WPS asynchronous back-end 
-[EOxServer](https://github.com/EOxServer/eoxserver) component.
+This package implements a simple WPS asynchronous [EOxServer](https://github.com/EOxServer/eoxserver) back-end.
 
 ## Overview
-The EOxServer WPS-Backend is a simple Python package allowing asynchronous execution
-of the EOxServer's WPS jobs.
+The EOxServer WPS-Backend is a simple Python package allowing asynchronous execution of the EOxServer's WPS jobs.
 
 The package consist of two parts:
- * simple daeom employing a simple FIFO queue and a pool of processes to execute the WPS asynchrounous jobs;
- * EOxServer component implementing the `AsyncBackendInterface` interface.
-These two part communnicate via a private IPC socket. 
+ * a daemon employing a simple FIFO queue and pool of processes to execute the WPS asynchronous jobs;
+ * an EOxServer component implementing the `AsyncBackendInterface` interface.
+These two part communicate via a private IPC socket.
 
-The daemon shares the full Django context witht the configured EOxServer instance and therefore each EOxServer instance requires its own instance of the WPS-backend daemon.
+The daemon shares the full Django context with the configured EOxServer instance and therefore each EOxServer instance requires its own instance of the WPS-backend daemon.
 
 ## Installation
 
-Use the usual `setup.py` (Python `setuptools`).
+Use the usual `setup.py` (Python `setuptools`) or `pip`
 
-_More details TBD_
+```
+  cd ./WPS-Backend/
+  pip instal .
+```
 
 ## Configuration
 
-The damon is configured via the EOxServer configuration file `eoxserver.conf` in the `service.ows.wps` section:
+The daemon is configured via the EOxServer configuration file `eoxserver.conf` in the `service.ows.wps` section:
 
 ```
 [services.ows.wps]
@@ -34,7 +35,7 @@ path_temp=<path_temp>
 path_perm=<path_perm>
 
 # mandatory directory of the taks persistend storage
-path_task=<path_task> 
+path_task=<path_task>
 
 # URL base mapped to the permanent WPS storage
 url_base=http://<hostname>/wps
@@ -49,13 +50,14 @@ max_queued_jobs=256
 num_workers=4
 ```
 
-The WPS-asychronous backend can be 'pluged-in' to the EoxServer simply by appending following lines to the instance's `settings.py`:
+The WPS asynchronous backend can be 'plugged-in' to the EOxServer simply by appending following lines to the instance's `settings.py`:
+
 ```
 # add async WPS backend components
-COMPONENTS += (
-    'eoxs_wps_async.backend',
-    'eoxs_wps_async.processes.**',
-)
+EOXS_ASYNC_BACKENDS = [
+    'eoxs_wps_async.backend.WPSAsyncBackendBase',
+]
+
 # route async WPS backend logging to the EOxServer's log-file.
 LOGGING['loggers']['eoxs_wps_async'] = {
     'handlers': ['eoxserver_file'],
@@ -73,13 +75,16 @@ Alias /wps <path_perm>
 
 ## Execution
 
-The daemon can started by the follwing command:
+The daemon can be started by the following command:
+
 ```
 python -EsOm eoxs_wps_async.daemon <settings-module> [<python-path> ...]
 ```
-The daemon requires the setting module of the EOxServer Django instance and the optional one or more Python paths if neccessary.
 
-It is recommended that the daemon is intergared as a system service. This can be done, e.g., by the following `systmed` servive configuration file (on a `systemd` enabled GNU/Linux system):
+The daemon requires the setting module of the EOxServer Django instance and the optional one or more Python paths if necessary.
+
+It is recommended that the daemon is integrated as a system service. This can be done, e.g., by the following `systmed` service configuration file (on a `systemd` enabled GNU/Linux system):
+
 ```
 [Unit]
 Description= Asynchronous EOxServer WPS Daemon
@@ -94,9 +99,11 @@ ExecStart=/usr/bin/python -EsOm eoxs_wps_async.daemon <instance>.settings <insta
 [Install]
 WantedBy=multi-user.target
 ```
+
 Replace `<instance>` with the EOxServer instance name and the `<instace-root>` by the path where this instance is located.
 
 Save the `systemd` service file, e.g., to `/etc/systemd/system/eoxs_wps_async.service` and execute following commands to start the service (with the right permissions):
+
 ```
 systemctl daemon-reload
 systemctl enable eoxs_wps_async.service
@@ -105,11 +112,12 @@ systemctl status eoxs_wps_async.service
 ```
 
 ### Restart
-As it was already said, the WPS backend shares the Django context of the EOxServer instance. Any update of the EOxServer code (e.g., new WPS process is added) or configuration (e.g., a change in the `settings.py`) requires restart of the daemon:
+As it was already said, the WPS backend shares the Django context of the EOxServer instance. Any update of the EOxServer code (e.g., a new WPS process is added) or configuration (e.g., a change of `settings.py`) requires restart of the daemon:
 
 ```
 systemctl restart eoxs_wps_async.service
 sleep 5 # it takes few secs to load all modules
 systemctl status eoxs_wps_async.service
 ```
-The restart terminates the currently executed daemon and starts a new one. The daemon termination stops all currently executed jobs instantly. The newly started daeom then loads terminated or pending jobs enqueues them for processing again.
+
+The restart terminates the running daemon and starts a new one. The daemon termination stops all currently executed jobs instantly. The newly started daemon then collects terminated or pending jobs and enqueues them for processing again.
