@@ -34,8 +34,7 @@ from glob import iglob
 from logging import getLogger, DEBUG, INFO, Formatter, StreamHandler
 from time import time
 from datetime import datetime
-from traceback import format_exc
-from socket import error as SocketError
+from errno import EBADF
 from signal import SIGINT, SIGTERM, signal, SIG_IGN
 from threading import Thread, Semaphore, Event
 import pickle
@@ -230,14 +229,10 @@ class ConnectionHandler(Thread):
                     self._connection.send(response)
         except EOFError as exc:
             logger.debug("EOF")
-        except SocketError as exc:
-            logger.error("SocketError: %s", exc)
-            for line in format_exc().split("\n"):
-                logger.debug(line)
+        except OSError as exc:
+            logger.error("OSError: %s", exc)
         except Exception as exc: #pylint: disable=broad-except
-            logger.error("Exception: %s", exc)
-            for line in format_exc().split("\n"):
-                logger.error(line)
+            logger.error("Connection failed! %s", exc, exc_info=True)
         finally:
             self._connection.close()
             logger.debug("Connection closed.")
@@ -270,22 +265,22 @@ class Daemon():
         self.connection_handlers = ThreadSet()
         self.connection_timeout = connection_timeout
         self.connection_poll_timeout = poll_timeout
-        self.job_queue = Queue(max_queued_jobs)
 
         self.logger = logger or getLogger(LOGGER_NAME)
 
         # set verbose multi-processes debugging
         set_stream_handler(mp_util.get_logger())
         mp_util.get_logger().setLevel(mp_util.SUBWARNING)
-        worker_semaphore = ProcessSemaphore(num_workers)
 
-        self.worker_pool = ProcessPool(
-            max(num_workers, num_worker_processes), init_worker,
-            maxtasksperchild=max_processed_jobs,
-        )
-        self.worker_pool_manager = WorkerPoolManager(
-            self.worker_pool, worker_semaphore, self.job_queue
-        )
+        self.max_queued_jobs = max_queued_jobs
+        self.num_workers = num_workers
+        self.num_worker_processes = num_worker_processes
+        self.max_processed_jobs = max_processed_jobs
+
+        self.job_queue = None
+        self.worker_semaphore = None
+        self.worker_pool = None
+        self.worker_pool_manager = None
 
     def run(self):
         """ Start the daemon. """
@@ -293,8 +288,20 @@ class Daemon():
             raise RuntimeError(
                 "An attempt to start again an already running daemon instance!"
             )
+
         self.logger.info("Starting daemon ...")
+
+        self.job_queue = Queue(self.max_queued_jobs)
+        self.worker_semaphore = ProcessSemaphore(self.num_workers)
+        self.worker_pool = ProcessPool(
+            max(self.num_workers, self.num_worker_processes), init_worker,
+            maxtasksperchild=self.max_processed_jobs
+        )
+        self.worker_pool_manager = WorkerPoolManager(
+            self.worker_pool, self.worker_semaphore, self.job_queue
+        )
         self.worker_pool_manager.start()
+
         try:
             # set signal handlers
             signal(SIGINT, self.terminate)
@@ -310,29 +317,39 @@ class Daemon():
             # start handling new connections
             self.logger.info("Daemon is listening to new connections ...")
             while True:
+                try:
+                    connection = self.socket_listener.accept()
+                except OSError as error:
+                    if error.errno == EBADF and self.socket_listener is None:
+                        break
+                    raise
                 ConnectionHandler(
                     self.request_handler,
-                    self.busy_response, self.timeout_response,
-                    self.socket_listener.accept(), self.connection_semaphore,
-                    self.connection_handlers, self.connection_timeout,
+                    self.busy_response,
+                    self.timeout_response,
+                    connection,
+                    self.connection_semaphore,
+                    self.connection_handlers,
+                    self.connection_timeout,
                     self.connection_poll_timeout,
                 ).start()
-        except SocketError as exc:
-            self.logger.error("SocketError: %s", exc)
         finally:
             self.cleanup()
 
     def cleanup(self):
         """ Perform the final clean-up. """
         # avoid repeated clean-up
-        if getattr(self, '_cleanedup', False):
+        if self.socket_listener is None:
             return
-        self._cleanedup = True # pylint: disable=attribute-defined-outside-init
+
         self.logger.info("Stopping daemon ...")
 
+        # stop socket listener
+        socket_listener = self.socket_listener
+        self.socket_listener = None
+        socket_listener.close()
+
         # terminate threads and processes
-        if self.socket_listener:
-            self.socket_listener.close()
         self.worker_pool_manager.stop()
         self.worker_pool.terminate()
         for item in list(self.connection_handlers):
@@ -344,9 +361,10 @@ class Daemon():
         for item in list(self.connection_handlers):
             item.join()
 
-        self.socket_listener = None
         self.worker_pool_manager = None
         self.worker_pool = None
+        self.worker_semaphore = None
+        self.job_queue = None
 
         self.logger.info("Daemon is stopped.")
 
@@ -411,9 +429,7 @@ class Daemon():
         except Exception as exc: #pylint: disable=broad-except
             # error in the handler code
             error_message = "%s: %s" % (type(exc).__name__, exc)
-            self.logger.error(error_message)
-            for line in format_exc().split("\n"):
-                self.logger.error(line)
+            self.logger.error(error_message, exc_info=True)
             return ("ERROR", error_message)
         else:
             return ("OK",)
@@ -481,9 +497,7 @@ def main(argv):
             logger=logger,
         ).run()
     except Exception as exc:
-        logger.error("Daemon crash: %s", exc)
-        for line in format_exc().split("\n"):
-            logger.error(line)
+        logger.error("Daemon failed! %s", exc, exc_info=True)
         raise
 
     return 0

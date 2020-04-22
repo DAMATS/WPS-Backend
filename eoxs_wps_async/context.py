@@ -28,7 +28,9 @@
 import errno
 from logging import getLogger
 from os import makedirs, chdir, rmdir, listdir
-from os.path import join, isfile, isdir, exists, relpath, dirname
+from os.path import (
+    join, isfile, isdir, exists, abspath, relpath, dirname, commonpath,
+)
 from shutil import move, rmtree
 from urllib.parse import urljoin
 from eoxserver.services.ows.wps.context import (
@@ -86,8 +88,8 @@ class PathContext(BaseContext):
                           bucket exists or not is controlled by this process.
         """
         super(PathContext, self).__init__(identifier, logger=logger)
-        self._path_temp = path_temp
-        self._path_perm = path_perm
+        self._path_temp = abspath(path_temp)
+        self._path_perm = abspath(path_perm)
         self._url_base = url_base if url_base[-1] == '/' else url_base + '/'
         self._path_perm_exists = path_perm_exists
 
@@ -152,29 +154,36 @@ class PathContext(BaseContext):
         """ Get the workspace path. """
         return self._path_temp
 
+    def set_workspace(self):
+        """ If possible change the current directory to the workspace path. """
+        try:
+            chdir(self._path_temp) # assure we stay in the workspace
+        except FileNotFoundError:
+            raise ContextError("Context does not exist!")
+
     def publish(self, path):
         """ Publish file from the local workspace and return its path
         and public URL.
         The file path must be relative to the workspace path.
         """
         self.logger.info("Publishing %s", path)
-        chdir(self._path_temp) # assure we stay in the workspace
-        # check the path
-        source = relpath(path)
-        if '..' in source:
+        self.set_workspace()
+        if self._path_temp != commonpath([self._path_temp, abspath(path)]):
             self.logger.error("Attempt to publish non-local file %s", path)
             raise ContextError(
                 "Only local workspace files can be published! PATH=%s" % path
             )
-        if not isfile(source):
+        if not isfile(path):
             self.logger.error("Attempt to publish non-file path %s", path)
             raise ContextError("Only files can be published! PATH=%s" % path)
         # publish the file
-        target_path = join(self._path_perm, source)
-        targer_url = urljoin(self._url_base, source)
+        target_path = join(self._path_perm, relpath(path))
+        targer_url = urljoin(self._url_base, relpath(path))
+        if not isdir(self._path_perm):
+            raise ContextError("Permanent directory does not exist!")
         if not exists(dirname(target_path)):
             makedirs(dirname(target_path))
-        move(source, target_path)
+        move(path, target_path)
         self.logger.debug("moved %s -> %s", path, target_path)
         return target_path, targer_url
 
@@ -223,11 +232,18 @@ class Context(PathContext):
 
     def update_response(self, response):
         """ Update the stored execute response. """
-        with open(self.RESPONSE_FILE, 'wb') as fobj:
-            fobj.write(self.encoder.serialize(response)[0])
-        path, url = self.publish(self.RESPONSE_FILE)
-        self.logger.debug("Response updated.")
-        return path, url
+        try:
+            self.set_workspace()
+            with open(self.RESPONSE_FILE, 'wb') as fobj:
+                fobj.write(self.encoder.serialize(response)[0])
+            path, url = self.publish(self.RESPONSE_FILE)
+            self.logger.debug("Response updated.")
+            return path, url
+        except ContextError as error:
+            self.logger.warning(
+                "Failed to update the WPS execute response! %s", error
+            )
+            return None, None
 
     def set_accepted(self):
         """ Set the StatusAccepted stored response.

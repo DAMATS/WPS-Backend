@@ -28,7 +28,6 @@
 
 import re
 import sys
-from traceback import format_exc
 from logging import getLogger
 from os import remove
 from os.path import join, isdir, isfile
@@ -149,9 +148,7 @@ def accept_job(job_id, process_id, raw_inputs, resp_form, extra_parts):
                 raise
             except Exception as exception: # pylint: disable=broad-except
                 error_message = "%s: %s" % (type(exception).__name__, exception)
-                logger.debug(error_message)
-                for line in format_exc().split("\n"):
-                    logger.debug(line)
+                logger.error(error_message, exc_info=True)
                 raise JobInitializationError(error_message)
         context.set_accepted()
 
@@ -194,9 +191,7 @@ def execute_job(job_id, process_id, raw_inputs, resp_form, extra_parts):
                     pack_outputs(outputs, resp_form, output_defs)
                 )
             except Exception as exception: # pylint: disable=broad-except
-                logger.debug("%s: %s", type(exception).__name__, exception)
-                for line in format_exc().split("\n"):
-                    logger.debug(line)
+                logger.debug("%s: %s", type(exception).__name__, exception, exc_info=True)
                 context.set_failed(exception)
             finally:
                 # remove the pickled task
@@ -206,9 +201,7 @@ def execute_job(job_id, process_id, raw_inputs, resp_form, extra_parts):
                     logger.debug("removed %s", task_file)
 
     except Exception as exception: # pylint: disable=broad-except
-        logger.error("%s: %s", type(exception).__name__, exception)
-        for line in format_exc().split("\n"):
-            logger.debug(line)
+        logger.error("%s: %s", type(exception).__name__, exception, exc_info=True)
         return exception
     else:
         return None
@@ -234,6 +227,8 @@ def purge_job(job_id, process_id=None, logger=None):
         process = get_process(process_id)
         if hasattr(process, 'discard'):
             process.discard(BaseContext(job_id, logger))
+
+    logger.info("Job resources purged.")
 
 
 def reset_job(job_id, logger=None):
