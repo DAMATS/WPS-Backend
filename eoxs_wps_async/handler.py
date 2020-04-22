@@ -191,6 +191,7 @@ def execute_job(job_id, process_id, raw_inputs, resp_form, extra_parts):
                     pack_outputs(outputs, resp_form, output_defs)
                 )
             except Exception as exception: # pylint: disable=broad-except
+                logger.info("Job failed! %s: %s", type(exception).__name__, exception)
                 logger.debug("%s: %s", type(exception).__name__, exception, exc_info=True)
                 context.set_failed(exception)
             finally:
