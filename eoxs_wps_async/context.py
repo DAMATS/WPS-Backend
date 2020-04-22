@@ -27,7 +27,7 @@
 
 import errno
 from logging import getLogger
-from os import makedirs, chdir, rmdir, listdir
+from os import makedirs, chdir, rmdir, listdir, getcwd
 from os.path import (
     join, isfile, isdir, exists, abspath, relpath, dirname, commonpath,
 )
@@ -168,7 +168,8 @@ class PathContext(BaseContext):
         """
         self.logger.info("Publishing %s", path)
         self.set_workspace()
-        if self._path_temp != commonpath([self._path_temp, abspath(path)]):
+        workspace_path = getcwd()
+        if workspace_path != commonpath([workspace_path, abspath(path)]):
             self.logger.error("Attempt to publish non-local file %s", path)
             raise ContextError(
                 "Only local workspace files can be published! PATH=%s" % path
