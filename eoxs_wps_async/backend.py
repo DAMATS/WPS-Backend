@@ -27,9 +27,8 @@
 # pylint: disable=unused-argument, too-many-arguments, no-self-use
 
 from uuid import uuid4
-
+from logging import getLogger
 from eoxserver.services.ows.wps.exceptions import ServerBusy, NoApplicableCode
-
 from eoxs_wps_async.util import cached_property
 from eoxs_wps_async.config import get_wps_config
 from eoxs_wps_async.client import Client, ClientError
@@ -44,73 +43,93 @@ class WPSAsyncBackendBase():
     """ Simple testing WPS fake asynchronous back-end. """
     supported_versions = ("1.0.0",)
 
-    @cached_property
-    def conf(self):
-        """ Get configuration. """
-        return get_wps_config()
-
-    @property
-    def client(self):
-        """ Get connection to the execution daemon. """
-        return Client(
-            self.conf.socket_file,
-            self.conf.socket_connection_timeout,
-        )
-
     def execute(self, process, raw_inputs, resp_form, extra_parts=None,
                 job_id=None, version="1.0.0", **kwargs):
         """ Asynchronous process execution. """
         job_id = check_job_id(job_id or str(uuid4()))
         logger = get_job_logger(job_id, LOGGER_NAME)
 
-        with self.client as client:
-            client.send((
-                "EXECUTE",
-                job_id,
-                process.identifier,
-                raw_inputs,
-                resp_form,
-                extra_parts
-            ))
-            response = client.recv()
+        response, *payload = self._request(
+            "EXECUTE",
+            job_id,
+            process.identifier,
+            raw_inputs,
+            resp_form,
+            extra_parts
+        )
 
-        if response[0] == "OK":
+        if response == "OK":
             return job_id
-        if response[0] == "BUSY":
+        if response == "BUSY":
             raise ServerBusy("The server is busy!")
-        if response[0] == "OWSEXC":
-            raise response[1]
-        if response[0] == "ERROR":
-            raise NoApplicableCode(response[1], "eoxs_wps_async.daemon")
-        message = "Unknown response! RESP=%r" % response[0]
-        logger.error(message)
-        raise ValueError(message)
+        if response == "OWSEXC":
+            raise payload[0]
+        if response == "ERROR":
+            raise NoApplicableCode(payload[0], "eoxs_wps_async.daemon")
+
+        return self._handle_unknown_response(response, logger)
+
+    def purge(self, job_id, process_id=None, **kwargs):
+        """ Purge the job from the system by removing all the resources
+        occupied by the job.
+        If the optional process_id is provided then the discard() callback
+        of the process is executed.
+        """
+        job_id = check_job_id(job_id)
+        logger = get_job_logger(job_id, LOGGER_NAME)
+
+        response, *payload = self._request("PURGE", job_id, process_id)
+
+        if response == "OK":
+            return
+        if response == "ERROR":
+            raise ClientError(payload[0])
+
+        self._handle_unknown_response(response, logger)
+
+    def list(self, job_ids=None, **kwargs):
+        """ List current jobs. The list can be restricted by the given job_ids.
+        """
+        logger = getLogger(LOGGER_NAME)
+
+        response, *payload = self._request("LIST", job_ids)
+
+        if response == "OK":
+            return payload[0]
+        if response == "ERROR":
+            raise ClientError(payload[0])
+
+        return self._handle_unknown_response(response, logger)
 
     def get_response_url(self, job_id):
         """ Return response URL for the given job identifier. """
-        return get_response_url(job_id, self.conf)
+        return get_response_url(job_id, self._conf)
 
     def get_response(self, job_id):
         """ Get the asynchronous response document as an open Python file-like
         object.
         """
-        return get_response(job_id, self.conf)
+        return get_response(job_id, self._conf)
 
-    def purge(self, job_id, **kwargs):
-        """ Purge the job from the system by removing all the resources
-        occupied by the job.
-        """
-        job_id = check_job_id(job_id)
-        logger = get_job_logger(job_id, LOGGER_NAME)
+    @cached_property
+    def _conf(self):
+        """ Get configuration. """
+        return get_wps_config()
 
-        with self.client as client:
-            client.send(("PURGE", job_id))
-            response = client.recv()
+    @property
+    def _client(self):
+        """ Get connection to the execution daemon. """
+        return Client(
+            self._conf.socket_file,
+            self._conf.socket_connection_timeout,
+        )
 
-        if response[0] == "OK":
-            return
-        if response[0] == "ERROR":
-            raise ClientError(response[1])
-        message = "Unknown response! RESP=%r" % response[0]
+    def _request(self, *request):
+        with self._client as client:
+            client.send(request)
+            return client.recv()
+
+    def _handle_unknown_response(self, response, logger):
+        message = "Unknown response! RESP=%r" % response
         logger.error(message)
         raise ValueError(message)

@@ -29,7 +29,7 @@
 import re
 import sys
 from logging import getLogger
-from os import remove
+from os import remove, listdir
 from os.path import join, isdir, isfile
 from shutil import rmtree
 from urllib.parse import urljoin
@@ -250,3 +250,51 @@ def _remove_paths(paths, logger):
         elif isfile(path):
             remove(path)
             logger.debug("removed %s", path)
+
+
+def get_job_info(job_id, conf=None):
+    """ Get information about the job. """
+    if not is_valid_job_id(job_id):
+        return None
+
+    task_path = get_task_path(job_id, conf)
+    perm_path = get_perm_path(job_id, conf)
+    temp_path = get_temp_path(job_id, conf)
+
+    task_path_exists = isdir(task_path)
+    perm_path_exists = isdir(perm_path)
+    temp_path_exists = isdir(temp_path)
+
+    job_exits = task_path_exists or perm_path_exists or temp_path_exists
+
+    if not job_exits:
+        return None
+
+    return {
+        "response_exists": isfile(join(perm_path, Context.RESPONSE_FILE)),
+        "is_finished": not task_path_exists,
+        "is_active": temp_path_exists,
+    }
+
+
+def list_jobs(job_ids=None, conf=None):
+    """ List current jobs and information about them.
+    Optionally, the list can be restricted by the provided list of job ids.
+    """
+    conf = conf or get_wps_config()
+
+    def _list_dir(path, predicate):
+        yield from (name for name in listdir(path) if predicate(join(path, name)))
+
+    def _list_ids():
+        yield from _list_dir(conf.path_perm, isdir)
+        yield from _list_dir(conf.path_task, isfile)
+        yield from _list_dir(conf.path_temp, isdir)
+
+    job_ids = set(_list_ids() if job_ids is None else job_ids)
+
+    return [
+        (job_id, job_info) for job_id, job_info in (
+            (job_id, get_job_info(job_id)) for job_id in job_ids
+        ) if job_info
+    ]

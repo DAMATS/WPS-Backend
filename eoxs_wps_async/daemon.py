@@ -47,7 +47,7 @@ from eoxs_wps_async.util.thread import ThreadSet, Queue
 from eoxs_wps_async.util.ipc import get_listener
 from eoxs_wps_async.handler import (
     check_job_id, get_task_path, accept_job, execute_job, purge_job, reset_job,
-    is_valid_job_id, JobInitializationError, OWS10Exception,
+    list_jobs, is_valid_job_id, JobInitializationError, OWS10Exception,
 )
 
 LOGGER_NAME = "eoxs_wps_async.daemon"
@@ -411,12 +411,20 @@ class Daemon():
                 # wipe out job and all resources it uses
                 # check that job id can be used in paths (security)
                 job_id = check_job_id(payload[0])
+                # if the optional process is provided then the discard() callback
+                # of the process is executed
+                try:
+                    process_id = payload[1]
+                except IndexError:
+                    process_id = None
                 # remove enqueued job
                 self.job_queue.remove(lambda v: v[1] == job_id)
                 # remove files and directories
-                purge_job(job_id)
-            #elif action == "LIST":
+                purge_job(job_id, process_id)
+            elif action == "LIST":
                 # list all jobs and their status
+                job_ids = payload[0] if payload else None
+                return ('OK', list_jobs(job_ids=job_ids))
             #elif action == "STATUS":
                 # get status of a job
             else:
