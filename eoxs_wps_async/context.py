@@ -233,9 +233,11 @@ class Context(PathContext):
         if callback:
             try:
                 callback(self, *args, **kwargs)
-            except Exception:
-                self.logger.error("Context %r callback failed!", name)
-                raise
+            except Exception as error:
+                self.logger.error(
+                    "%s() callback failed! %s: %s",
+                    name, type(error).__name__, error, exc_info=True
+                )
 
     @property
     def status_location(self):

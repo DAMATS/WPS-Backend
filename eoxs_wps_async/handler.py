@@ -196,7 +196,15 @@ def execute_job(job_id, process_id, raw_inputs, resp_form, extra_parts):
             except Exception as exception: # pylint: disable=broad-except
                 logger.info("Job failed! %s: %s", type(exception).__name__, exception)
                 logger.debug("%s: %s", type(exception).__name__, exception, exc_info=True)
-                context.set_failed(exception)
+                try:
+                    context.set_failed(exception)
+                except MissingContextError:
+                    purge_job(job_id, process_id, logger)
+                except:
+                    # The job status cannot be updated to the FAILED state and
+                    # there is no other option than to remove the job.
+                    purge_job(job_id, process_id, logger)
+                    raise
             finally:
                 # remove the pickled task
                 task_file = get_task_path(job_id, conf)
@@ -236,7 +244,7 @@ def purge_job(job_id, process_id=None, logger=None):
                 process.discard(BaseContext(job_id, logger))
             except Exception as exception:
                 logger.error(
-                    "The discard() callback failed! %s: %s",
+                    "discard() callback failed! %s: %s",
                     type(exception).__name__, exception, exc_info=True
                 )
 
