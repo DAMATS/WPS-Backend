@@ -40,6 +40,13 @@ from eoxserver.services.ows.wps.context import (
 LOGGER_NAME = "eoxserver.services.ows.wps"
 
 
+class MissingContextError(ContextError):
+    """ Exception raised when the Job context went missing while job execution
+    was in progress, most likely due to the job removal.
+    This exception should lead to an immediate job termination.
+    """
+
+
 class BaseContext(BaseWpsContext):
     """ Base context class providing the identifier and logger properties. """
 
@@ -159,7 +166,7 @@ class PathContext(BaseContext):
         try:
             chdir(self._path_temp) # assure we stay in the workspace
         except FileNotFoundError:
-            raise ContextError("Context does not exist!")
+            raise MissingContextError("Context does not exist!")
 
     def publish(self, path):
         """ Publish file from the local workspace and return its path
@@ -167,24 +174,28 @@ class PathContext(BaseContext):
         The file path must be relative to the workspace path.
         """
         self.logger.info("Publishing %s", path)
-        self.set_workspace()
-        workspace_path = getcwd()
-        if workspace_path != commonpath([workspace_path, abspath(path)]):
-            self.logger.error("Attempt to publish non-local file %s", path)
-            raise ContextError(
-                "Only local workspace files can be published! PATH=%s" % path
-            )
-        if not isfile(path):
-            self.logger.error("Attempt to publish non-file path %s", path)
-            raise ContextError("Only files can be published! PATH=%s" % path)
-        # publish the file
-        target_path = join(self._path_perm, relpath(path))
-        targer_url = urljoin(self._url_base, relpath(path))
-        if not isdir(self._path_perm):
-            raise ContextError("Permanent directory does not exist!")
-        if not exists(dirname(target_path)):
-            makedirs(dirname(target_path))
-        move(path, target_path)
+        try:
+            self.set_workspace()
+            workspace_path = getcwd()
+            if workspace_path != commonpath([workspace_path, abspath(path)]):
+                self.logger.error("Attempt to publish non-local file %s", path)
+                raise ContextError(
+                    "Only local workspace files can be published! PATH=%s" % path
+                )
+            if not isfile(path):
+                self.logger.error("Attempt to publish non-file path %s", path)
+                raise ContextError("Only files can be published! PATH=%s" % path)
+            # publish the file
+            target_path = join(self._path_perm, relpath(path))
+            targer_url = urljoin(self._url_base, relpath(path))
+            if not isdir(self._path_perm):
+                raise MissingContextError("Permanent directory does not exist!")
+            if not exists(dirname(target_path)):
+                makedirs(dirname(target_path))
+            move(path, target_path)
+        except Exception as error:
+            self.logger.warning("Failed to publish %s! %s", path, error)
+            raise
         self.logger.debug("moved %s -> %s", path, target_path)
         return target_path, targer_url
 
@@ -238,13 +249,11 @@ class Context(PathContext):
             with open(self.RESPONSE_FILE, 'wb') as fobj:
                 fobj.write(self.encoder.serialize(response)[0])
             path, url = self.publish(self.RESPONSE_FILE)
-            self.logger.debug("Response updated.")
-            return path, url
-        except ContextError as error:
-            self.logger.warning(
-                "Failed to update the WPS execute response! %s", error
-            )
-            return None, None
+        except Exception as error:
+            self.logger.warning("Failed to update the WPS execute response! %s", error)
+            raise
+        self.logger.debug("Response updated.")
+        return path, url
 
     def set_accepted(self):
         """ Set the StatusAccepted stored response.

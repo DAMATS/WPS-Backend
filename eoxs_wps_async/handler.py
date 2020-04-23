@@ -44,7 +44,7 @@ from eoxserver.services.ows.wps.v10.execute_util import (
 
 from eoxs_wps_async.util import fix_dir, JobLoggerAdapter
 from eoxs_wps_async.config import get_wps_config
-from eoxs_wps_async.context import Context, BaseContext
+from eoxs_wps_async.context import Context, BaseContext, MissingContextError
 
 LOGGER_NAME = "eoxserver.services.ows.wps"
 RE_JOB_ID = re.compile(r'^[A-Za-z0-9_][A-Za-z0-9_.-]*$')
@@ -140,17 +140,17 @@ def accept_job(job_id, process_id, raw_inputs, resp_form, extra_parts):
         encoder, process, **get_context_args(job_id, False, logger, conf)
     )
     with context:
-        # optional process initialization
-        if hasattr(process, 'initialize'):
-            try:
+        try:
+            # optional process initialization
+            if hasattr(process, 'initialize'):
                 process.initialize(context, raw_inputs, resp_form, extra_parts)
-            except OWS10Exception:
-                raise
-            except Exception as exception: # pylint: disable=broad-except
-                error_message = "%s: %s" % (type(exception).__name__, exception)
-                logger.error(error_message, exc_info=True)
-                raise JobInitializationError(error_message)
-        context.set_accepted()
+            context.set_accepted()
+        except OWS10Exception:
+            raise
+        except Exception as exception: # pylint: disable=broad-except
+            error_message = "%s: %s" % (type(exception).__name__, exception)
+            logger.error(error_message, exc_info=True)
+            raise JobInitializationError(error_message)
 
 
 def execute_job(job_id, process_id, raw_inputs, resp_form, extra_parts):
@@ -169,8 +169,9 @@ def execute_job(job_id, process_id, raw_inputs, resp_form, extra_parts):
             encoder, process, **get_context_args(job_id, True, logger, conf)
         )
         with context:
-            context.set_started()
             try:
+                context.set_started()
+
                 # convert process's input/output definitions to a common format
                 input_defs = parse_params(process.inputs)
                 output_defs = parse_params(process.outputs)
@@ -190,6 +191,8 @@ def execute_job(job_id, process_id, raw_inputs, resp_form, extra_parts):
                 context.set_succeeded(
                     pack_outputs(outputs, resp_form, output_defs)
                 )
+            except MissingContextError:
+                purge_job(job_id, process_id, logger)
             except Exception as exception: # pylint: disable=broad-except
                 logger.info("Job failed! %s: %s", type(exception).__name__, exception)
                 logger.debug("%s: %s", type(exception).__name__, exception, exc_info=True)
@@ -224,12 +227,18 @@ def purge_job(job_id, process_id=None, logger=None):
         get_temp_path(job_id, conf),
     ], logger)
 
+    logger.info("Job resources purged.")
+
     if process_id:
         process = get_process(process_id)
         if hasattr(process, 'discard'):
-            process.discard(BaseContext(job_id, logger))
-
-    logger.info("Job resources purged.")
+            try:
+                process.discard(BaseContext(job_id, logger))
+            except Exception as exception:
+                logger.error(
+                    "The discard() callback failed! %s: %s",
+                    type(exception).__name__, exception, exc_info=True
+                )
 
 
 def reset_job(job_id, logger=None):
