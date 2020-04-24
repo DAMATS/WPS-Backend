@@ -149,7 +149,7 @@ def accept_job(job_id, process_id, raw_inputs, resp_form, extra_parts):
             raise
         except Exception as exception: # pylint: disable=broad-except
             error_message = "%s: %s" % (type(exception).__name__, exception)
-            logger.error(error_message, exc_info=True)
+            logger.error("Job initialization failed! %s", error_message, exc_info=True)
             raise JobInitializationError(error_message)
 
 
