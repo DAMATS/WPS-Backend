@@ -49,16 +49,17 @@ class Client():
     """ Client class.
 
     Parameters:
-        socket_filename - file-name of the IPC socket.
+        socket_family - socket type (AF_UNIX|AF_INET).
+        socket_address - file-name of the socket.
         connection_timeout - time in seconds after which an inactive client
             gets disconnected (10s by default)
     """
 
-    def __init__(self, socket_filename, connection_timeout=10):
+    def __init__(self, socket_family, socket_address, connection_timeout=10):
         self._conn = None
         self._conn_timeout = connection_timeout
-        self.socket_address = socket_filename
-        self.socket_family = 'AF_UNIX'
+        self.socket_address = socket_address
+        self.socket_family = socket_family
         self.socket_kwargs = {}
 
     def __del__(self):

@@ -42,7 +42,7 @@ import multiprocessing.util as mp_util
 from multiprocessing import Semaphore as ProcessSemaphore, Pool as ProcessPool
 import django
 from eoxserver.core import initialize as eoxs_initialize
-from eoxs_wps_async.config import get_wps_config
+from eoxs_wps_async.config import get_wps_config, inet_address
 from eoxs_wps_async.util.thread import ThreadSet, Queue
 from eoxs_wps_async.util.ipc import get_listener
 from eoxs_wps_async.handler import (
@@ -61,8 +61,8 @@ def error(message, *args):
 def usage(exename):
     """ Print simple usage. """
     print(
-        "USAGE: %s <eoxs-settings-module> [<eoxs-instance-path>]" % exename,
-        file=stderr
+        "USAGE: %s [-a|--address <ip4addr>:<port>] <eoxs-settings-module>"
+        " [<eoxs-instance-path>]" % exename, file=stderr
     )
 
 
@@ -244,7 +244,8 @@ class Daemon():
     """ Task scheduling daemon.
 
     Parameters:
-        socket_filename - file-name of the IPC socket.
+        socket_family - string socket type (AF_UNIX|AF_INET).
+        socket_address - file-name (AF_UNIX) of the IPv4 (host, port) tuple (AF_INET).
         max_connections - maximum allowed number of concurrent connections
             (64 by default).
         connection_timeout - time in seconds after which an inactive client
@@ -253,12 +254,12 @@ class Daemon():
             returns control to the connection handler (1s by default)
     """
 
-    def __init__(self, socket_filename, max_connections=64,
+    def __init__(self, socket_family, socket_address, max_connections=64,
                  connection_timeout=10, poll_timeout=1, num_workers=1,
                  num_worker_processes=2, max_processed_jobs=1,
                  max_queued_jobs=8, logger=None):
-        self.socket_address = socket_filename
-        self.socket_family = 'AF_UNIX'
+        self.socket_address = socket_address
+        self.socket_family = socket_family
         self.socket_kwargs = {}
         self.socket_listener = None
         self.connection_semaphore = Semaphore(max_connections)
@@ -307,7 +308,11 @@ class Daemon():
             signal(SIGINT, self.terminate)
             signal(SIGTERM, self.terminate)
             # create the listener for incoming connections
-            self.logger.info("Listening at %s ...", self.socket_address)
+            self.logger.info("Listening at %s ...",
+                    self.socket_address
+                    if not isinstance(self.socket_address, tuple) else
+                    "%s:%d" % self.socket_address
+            )
             self.socket_listener = get_listener(
                 self.socket_address, self.socket_family, **self.socket_kwargs
             )
@@ -338,16 +343,18 @@ class Daemon():
 
     def cleanup(self):
         """ Perform the final clean-up. """
-        # avoid repeated clean-up
-        if self.socket_listener is None:
+
+        if self.worker_pool_manager is None:
+            # avoid repeated clean-up
             return
 
         self.logger.info("Stopping daemon ...")
 
-        # stop socket listener
-        socket_listener = self.socket_listener
-        self.socket_listener = None
-        socket_listener.close()
+        if self.socket_listener is not None:
+            # stop socket listener
+            socket_listener = self.socket_listener
+            self.socket_listener = None
+            socket_listener.close()
 
         # terminate threads and processes
         self.worker_pool_manager.stop()
@@ -462,16 +469,18 @@ class Daemon():
 
 def main(argv):
     """ Main subroutine. """
-    # configure Django settings module
     try:
-        environ["DJANGO_SETTINGS_MODULE"] = argv[1]
-    except IndexError:
-        error("Not enough input arguments!")
+        prm = parse_argv(argv)
+    except ArgvParserError as exc:
+        error(str(exc))
         usage(basename(argv[0]))
         return 1
 
-    # add Django instance search path
-    for path in argv[2:]:
+    # configure Django settings module
+    environ["DJANGO_SETTINGS_MODULE"] = prm["django_settings_module"]
+
+    # add Django instance search path(s)
+    for path in prm["search_path"]:
         if path not in sys.path:
             sys.path.append(path)
 
@@ -492,9 +501,21 @@ def main(argv):
     # load configuration
     conf = get_wps_config()
 
+    # socket address
+    if "address" in prm:
+        family, address = prm["address"]
+    elif conf.socket_address:
+        family, address = "AF_INET", conf.socket_address
+    elif conf.socket_file:
+        family, address = "AF_UNIX", conf.socket_file
+    else:
+        error("Neither address nor socket file configured!")
+        return 1
+
     try:
         Daemon(
-            socket_filename=conf.socket_file,
+            socket_family=family,
+            socket_address=address,
             max_connections=conf.socket_max_connections,
             connection_timeout=conf.socket_connection_timeout,
             poll_timeout=conf.socket_poll_timeout,
@@ -509,6 +530,38 @@ def main(argv):
         raise
 
     return 0
+
+
+class ArgvParserError(Exception):
+    """ Argumens' Parser exception. """
+
+
+def parse_argv(argv):
+    """ Parse command-line arguments. """
+    data = {
+        'search_path': [],
+    }
+    it_argv = iter(argv[1:])
+
+    try:
+        for arg in it_argv:
+            if arg in ('-a', '--address'):
+                data['address'] = ('AF_INET', inet_address(next(it_argv)))
+            else:
+                if 'django_settings_module' in data:
+                    data['search_path'].append(arg)
+                else:
+                    data['django_settings_module'] = arg
+
+        if 'django_settings_module' not in data:
+            raise StopIteration
+
+    except ValueError as error:
+        raise ArgvParserError(str(error)) from None
+    except StopIteration:
+        raise ArgvParserError('Not enough input arguments') from None
+
+    return data
 
 
 if __name__ == "__main__":

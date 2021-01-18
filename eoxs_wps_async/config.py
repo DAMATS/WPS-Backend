@@ -79,6 +79,26 @@ def positive_float_range(min_value, max_value):
     return _positive_float_range_
 
 
+def inet_address(address):
+    """ Parse AF_INET address. """
+
+    ipaddr, sep, port = address.rpartition(':')
+    if not sep:
+        raise ValueError("Missing port number!")
+
+    try:
+        nport = int(port)
+        if nport < 1 or nport > 0xFFFF:
+            raise ValueError
+    except ValueError:
+        raise ValueError("Invalid port number!") from None
+
+    if not ipaddr:
+        ipaddr = "0.0.0.0"
+
+    return (ipaddr, nport)
+
+
 class WPSConfigReader(Reader):
     # pylint: disable=too-few-public-methods
     """ WPS backend configuration reader. """
@@ -87,7 +107,8 @@ class WPSConfigReader(Reader):
     path_perm = Option(required=True)
     path_task = Option(required=True)
     url_base = Option(required=True)
-    socket_file = Option(required=True)
+    socket_file = Option(required=False)
+    socket_address = Option(type=inet_address, required=False)
     socket_max_connections = Option(
         type=positive_int, default=DEF_MAX_CONNECTIONS
     )

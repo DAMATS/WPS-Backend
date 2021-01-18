@@ -119,8 +119,16 @@ class WPSAsyncBackendBase():
     @property
     def _client(self):
         """ Get connection to the execution daemon. """
+
+        if self._conf.socket_address:
+            family, address = 'AF_INET', self._conf.socket_address
+        elif self._conf.socket_file:
+            family, address = 'AF_UNIX', self._conf.socket_file
+        else:
+            raise ClientError("Neither address nor socket file provided!")
+
         return Client(
-            self._conf.socket_file,
+            family, address,
             self._conf.socket_connection_timeout,
         )
 
