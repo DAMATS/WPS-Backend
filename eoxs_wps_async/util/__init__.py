@@ -28,6 +28,11 @@
 from logging import LoggerAdapter
 
 
+def format_exception(exception):
+    """ Convert exception to a formatted string. """
+    return f"{type(exception).__name__}: {exception}"
+
+
 class cached_property():
     # pylint: disable=too-few-public-methods, invalid-name
     """
@@ -38,7 +43,6 @@ class cached_property():
         self.func = func
 
     def __get__(self, instance, type=None):
-        # pylint: disable=redefined-builtin
         if instance is None:
             return self
         res = instance.__dict__[self.func.__name__] = self.func(instance)
@@ -54,4 +58,4 @@ class JobLoggerAdapter(LoggerAdapter):
     """ Logger adapter adding job_id to the log messages. """
     def process(self, msg, kwargs):
         """Add job id to the message."""
-        return '%s: %s' % (self.extra['job_id'], msg), kwargs
+        return f"{self.extra['job_id']}: {msg}", kwargs

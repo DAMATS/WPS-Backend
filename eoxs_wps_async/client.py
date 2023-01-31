@@ -71,7 +71,6 @@ class Client():
         return self
 
     def __exit__(self, type, value, traceback):
-        # pylint: disable=redefined-builtin
         self.close()
 
     def connect(self):
@@ -79,12 +78,13 @@ class Client():
         if not self._conn:
             try:
                 self._conn = get_client(
-                    self.socket_address, self.socket_family, **self.socket_kwargs
+                    self.socket_address, self.socket_family,
+                    **self.socket_kwargs
                 )
-            except OSError:
+            except OSError as error:
                 raise ClientConnectionError(
                     "Failed to connect to the daemon socket!"
-                )
+                ) from error
 
     def close(self):
         """ Close connection. """
@@ -110,7 +110,7 @@ class Client():
                     return self._conn.recv()
                 if (time() - start_time) > self._conn_timeout:
                     raise ClientConnectionTimeout("Connection timed out!")
-        except EOFError:
-            ClientConnectionClosed(
+        except EOFError as error:
+            raise ClientConnectionClosed(
                 "Connection closed before receiving any response!"
-            )
+                ) from error

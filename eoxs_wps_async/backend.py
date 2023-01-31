@@ -34,13 +34,14 @@ from eoxs_wps_async.config import get_wps_config
 from eoxs_wps_async.client import Client, ClientError
 from eoxs_wps_async.handler import (
     check_job_id, get_job_logger, get_response_url, get_response,
+    is_valid_job_id,
 )
 
 LOGGER_NAME = "eoxserver.services.ows.wps"
 
 
-class WPSAsyncBackendBase():
-    """ Simple testing WPS fake asynchronous back-end. """
+class WPSAsyncBackend():
+    """ WPS asynchronous back-end. """
     supported_versions = ("1.0.0",)
 
     def execute(self, process, raw_inputs, resp_form, extra_parts=None,
@@ -92,6 +93,10 @@ class WPSAsyncBackendBase():
         """
         logger = getLogger(LOGGER_NAME)
 
+        if job_ids is not None:
+            # convert to a list and reject invalid job ids
+            job_ids = [id_ for id_ in job_ids if is_valid_job_id(id_)]
+
         response, *payload = self._request("LIST", job_ids)
 
         if response == "OK":
@@ -106,8 +111,8 @@ class WPSAsyncBackendBase():
         return get_response_url(job_id, self._conf)
 
     def get_response(self, job_id):
-        """ Get the asynchronous response document as an open Python file-like
-        object.
+        """ Get the asynchronous response document as an open readable binary
+        file-like object.
         """
         return get_response(job_id, self._conf)
 
@@ -138,6 +143,10 @@ class WPSAsyncBackendBase():
             return client.recv()
 
     def _handle_unknown_response(self, response, logger):
-        message = "Unknown response! RESP=%r" % response
+        message = f"Unknown response! RESP={response!r}"
         logger.error(message)
         raise ValueError(message)
+
+
+# alias for backward compatibility
+WPSAsyncBackendBase = WPSAsyncBackend

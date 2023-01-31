@@ -36,13 +36,14 @@ from urllib.parse import urljoin
 from eoxserver.services.ows.wps.context import (
     BaseContext as BaseWpsContext, ContextError,
 )
+from eoxs_wps_async.util import format_exception
 
 LOGGER_NAME = "eoxserver.services.ows.wps"
 
 
 class MissingContextError(ContextError):
-    """ Exception raised when the Job context went missing while job execution
-    was in progress, most likely due to the job removal.
+    """ Exception raised when the Job context went missing while the job
+    execution was in progress, most likely due to the job removal.
     This exception should lead to an immediate job termination.
     """
 
@@ -51,7 +52,7 @@ class BaseContext(BaseWpsContext):
     """ Base context class providing the identifier and logger properties. """
 
     def __init__(self, identifier, logger=None):
-        super(BaseContext, self).__init__()
+        super().__init__()
         self._identifier = identifier
         self._logger = logger or getLogger(__name__)
 
@@ -74,12 +75,13 @@ class PathContext(BaseContext):
     The context reads the configuration and creates the process temporary
     working directory and permanent directory where the results are published.
 
-    The temporary workspace exists only during the processes execution and gets
-    automatically removed when the execution ends.
+    The temporary workspace exists only during the processes execution and
+    it gets automatically removed when the execution ends.
 
-    The permanent storage contains the processing outputs and it exists
-    even after the process termination.
+    The permanent storage contains the processing outputs and it keeps existing
+    after the process termination.
     """
+
     def __init__(self, identifier, path_temp, path_perm, url_base, logger=None,
                  path_perm_exists=False):
         # pylint: disable=too-many-arguments
@@ -94,7 +96,7 @@ class PathContext(BaseContext):
                           exist but later it must exists. Whether the output
                           bucket exists or not is controlled by this process.
         """
-        super(PathContext, self).__init__(identifier, logger=logger)
+        super().__init__(identifier, logger=logger)
         self._path_temp = abspath(path_temp)
         self._path_perm = abspath(path_perm)
         self._url_base = url_base if url_base[-1] == '/' else url_base + '/'
@@ -106,32 +108,32 @@ class PathContext(BaseContext):
         # create the temporary directory
         try:
             makedirs(self._path_temp)
-        except OSError as exc:
-            if exc.errno == errno.EEXIST:
+        except OSError as error:
+            if error.errno == errno.EEXIST:
                 raise ContextError(
-                    "Temporary path must not exist! PATH=%s" % self._path_temp
-                )
+                    f"Temporary path must not exist! PATH={self._path_temp}"
+                ) from None
             raise
         self.logger.debug("created %s", self._path_perm)
         # create the permanent directory
         try:
             if self._path_perm_exists:
                 if not isdir(self._path_perm):
-                    # the path must be directory
+                    # the path must be a directory
                     raise ContextError(
-                        "Permanent path must be an existing directory! PATH=%s"
-                        % self._path_perm
+                        "Permanent path is not a directory! "
+                        f"PATH={self._path_perm}"
                     )
             else:
                 # the directory must not exist
                 try:
                     makedirs(self._path_perm)
-                except OSError as exc:
-                    if exc.errno == errno.EEXIST:
+                except OSError as error:
+                    if error.errno == errno.EEXIST:
                         raise ContextError(
-                            "Permanent path must not exist! PATH=%s"
-                            % self._path_perm
-                        )
+                            "Permanent path must not exist! "
+                            f"PATH={self._path_perm}"
+                        ) from None
                     raise
                 self.logger.debug("created %s", self._path_temp)
         except:
@@ -141,10 +143,10 @@ class PathContext(BaseContext):
             raise
         # assure we stay in the temporary directory
         chdir(self._path_temp)
-        self.logger.debug("dir. changed to  %s", self._path_temp)
+        self.logger.debug("directory changed to  %s", self._path_temp)
         return self
 
-    def __exit__(self, type, value, traceback): # pylint: disable=redefined-builtin
+    def __exit__(self, type, value, traceback):
         # remove workspace
         self.logger.info("Context released.")
         if isdir(self._path_temp):
@@ -166,7 +168,7 @@ class PathContext(BaseContext):
         try:
             chdir(self._path_temp) # assure we stay in the workspace
         except FileNotFoundError:
-            raise MissingContextError("Context does not exist!")
+            raise MissingContextError("Context does not exist!") from None
 
     def publish(self, path):
         """ Publish file from the local workspace and return its path
@@ -178,18 +180,20 @@ class PathContext(BaseContext):
             self.set_workspace()
             workspace_path = getcwd()
             if workspace_path != commonpath([workspace_path, abspath(path)]):
-                self.logger.error("Attempt to publish non-local file %s", path)
+                self.logger.error("Attempt to publish a non-local file %s", path)
                 raise ContextError(
-                    "Only local workspace files can be published! PATH=%s" % path
+                    f"Only local workspace files can be published! PATH={path}"
                 )
             if not isfile(path):
-                self.logger.error("Attempt to publish non-file path %s", path)
-                raise ContextError("Only files can be published! PATH=%s" % path)
+                self.logger.error("Attempt to publish a non-file path %s", path)
+                raise ContextError(f"Only files can be published! PATH={path}")
             # publish the file
             target_path = join(self._path_perm, relpath(path))
             targer_url = urljoin(self._url_base, relpath(path))
             if not isdir(self._path_perm):
-                raise MissingContextError("Permanent directory does not exist!")
+                raise MissingContextError(
+                    f"Permanent directory does not exist! PATH={self._path_perm}"
+                )
             if not exists(dirname(target_path)):
                 makedirs(dirname(target_path))
             move(path, target_path)
@@ -219,7 +223,7 @@ class Context(PathContext):
                           exist but later it must exists. Whether the output
                           bucket exists or not is controlled by this process.
         """
-        super(Context, self).__init__(**kwargs)
+        super().__init__(**kwargs)
         encoder.status_location = urljoin(
             self._url_base, self.RESPONSE_FILE
         )
@@ -235,8 +239,8 @@ class Context(PathContext):
                 callback(self, *args, **kwargs)
             except Exception as error:
                 self.logger.error(
-                    "%s() callback failed! %s: %s",
-                    name, type(error).__name__, error, exc_info=True
+                    "%s() callback failed! %s",
+                    name, format_exception(error), exc_info=True
                 )
 
     @property
@@ -284,7 +288,7 @@ class Context(PathContext):
         between 0 and 99.
 
         NOTE: This method should be called only when the process gets called
-        first time or resumed after pause.  For the regular progress updates
+        first time or resumed after a pause.  For the regular progress updates
         use update_progress() method.
         """
         if progress is not None:

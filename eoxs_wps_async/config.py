@@ -25,12 +25,7 @@
 # THE SOFTWARE.
 #-------------------------------------------------------------------------------
 
-try:
-    from configparser import NoOptionError, NoSectionError
-except ImportError:
-    # Python 2.*
-    from ConfigParser import NoOptionError, NoSectionError
-
+from configparser import NoOptionError, NoSectionError
 from eoxserver.core.decoders.config import Reader, Option
 from eoxserver.core.config import get_eoxserver_config
 
@@ -73,8 +68,8 @@ def positive_float_range(min_value, max_value):
                 return value
             raise ValueError("Not a positive float!")
         raise ValueError(
-            "Float value is in the allowed range [%g, %g]!" %
-            (min_value, max_value)
+            "Float value is outside the allowed range "
+            f"[{min_value:g}, {max_value:g}"
         )
     return _positive_float_range_
 
@@ -141,9 +136,10 @@ class WPSConfigReader(Reader):
 
 
 _WPS_CONFIG = None
+
 def get_wps_config(config=None):
     """ Get WPS configuration. """
-    global _WPS_CONFIG # pylint: disable=global-statement
+    global _WPS_CONFIG
     if not _WPS_CONFIG:
         _WPS_CONFIG = load_wps_config(config)
     return _WPS_CONFIG

@@ -25,9 +25,9 @@
 # THE SOFTWARE.
 #-------------------------------------------------------------------------------
 # pylint: disable=unused-argument, too-many-arguments, too-many-locals
+# pylint: disable=broad-except
 
 import re
-import sys
 from logging import getLogger
 from os import remove, listdir
 from os.path import join, isdir, isfile
@@ -42,7 +42,7 @@ from eoxserver.services.ows.wps.v10.execute_util import (
     parse_params, decode_raw_inputs, decode_output_requests, pack_outputs,
 )
 
-from eoxs_wps_async.util import fix_dir, JobLoggerAdapter
+from eoxs_wps_async.util import format_exception, fix_dir, JobLoggerAdapter
 from eoxs_wps_async.config import get_wps_config
 from eoxs_wps_async.context import Context, BaseContext, MissingContextError
 
@@ -50,25 +50,22 @@ LOGGER_NAME = "eoxserver.services.ows.wps"
 RE_JOB_ID = re.compile(r'^[A-Za-z0-9_][A-Za-z0-9_.-]*$')
 
 
-if sys.version_info > (3, 0):
-    # Python 2.x compatibility
-    basestring = str # pylint: disable=invalid-name
-
-
 def is_valid_job_id(job_id):
     """ Return true for a valid job id."""
-    return bool((isinstance(job_id, basestring) and RE_JOB_ID.match(job_id)))
+    return bool((isinstance(job_id, str) and RE_JOB_ID.match(job_id)))
 
 
 def check_job_id(job_id):
     """ Check job id. """
     if not is_valid_job_id(job_id):
-        raise ValueError("Invalid job identifier %r!" % job_id)
+        raise ValueError(f"Invalid job identifier {job_id!r}!")
     return job_id
 
 
 def get_job_logger(job_id, logger_name):
-    """ Custom logger. """
+    """ Create custom job-specific log adapter for the given job id and logger
+    name.
+    """
     return JobLoggerAdapter(getLogger(logger_name), {'job_id': job_id})
 
 
@@ -94,12 +91,12 @@ def get_base_url(job_id, conf=None):
 
 
 def get_response_url(job_id, conf=None):
-    """ Return response URL for the given job identifier. """
+    """ Return WPS response URL for the given job identifier. """
     return urljoin(get_base_url(job_id, conf), Context.RESPONSE_FILE)
 
 
 def get_response(job_id, conf=None):
-    """ Return response URL for the given job identifier. """
+    """ Return binary file stream reading the job's WPS response. """
     return open(join(get_perm_path(job_id, conf), Context.RESPONSE_FILE), "rb")
 
 
@@ -126,7 +123,7 @@ def get_process(process_id):
         is_async = getattr(process, 'asynchronous', False)
         if is_async and process.identifier == process_id:
             return process
-    raise ValueError("Invalid process identifier %r!" % process_id)
+    raise ValueError("Invalid process identifier {process_id!r}!")
 
 
 def accept_job(job_id, process_id, raw_inputs, resp_form, extra_parts):
@@ -147,10 +144,10 @@ def accept_job(job_id, process_id, raw_inputs, resp_form, extra_parts):
             context.set_accepted()
         except OWS10Exception:
             raise
-        except Exception as exception: # pylint: disable=broad-except
-            error_message = "%s: %s" % (type(exception).__name__, exception)
+        except Exception as exception:
+            error_message = format_exception(exception)
             logger.error("Job initialization failed! %s", error_message, exc_info=True)
-            raise JobInitializationError(error_message)
+            raise JobInitializationError(error_message) from None
 
 
 def execute_job(job_id, process_id, raw_inputs, resp_form, extra_parts):
@@ -193,9 +190,10 @@ def execute_job(job_id, process_id, raw_inputs, resp_form, extra_parts):
                 )
             except MissingContextError:
                 purge_job(job_id, process_id, logger)
-            except Exception as exception: # pylint: disable=broad-except
-                logger.info("Job failed! %s: %s", type(exception).__name__, exception)
-                logger.debug("%s: %s", type(exception).__name__, exception, exc_info=True)
+            except Exception as exception:
+                error_message = format_exception(exception)
+                logger.info("Job failed! %s", error_message)
+                logger.debug(error_message, exc_info=True)
                 try:
                     context.set_failed(exception)
                 except MissingContextError:
@@ -212,8 +210,8 @@ def execute_job(job_id, process_id, raw_inputs, resp_form, extra_parts):
                     remove(task_file)
                     logger.debug("removed %s", task_file)
 
-    except Exception as exception: # pylint: disable=broad-except
-        logger.error("%s: %s", type(exception).__name__, exception, exc_info=True)
+    except Exception as exception:
+        logger.error("%s", format_exception(exception), exc_info=True)
         return exception
     else:
         return None
@@ -244,8 +242,8 @@ def purge_job(job_id, process_id=None, logger=None):
                 process.discard(BaseContext(job_id, logger))
             except Exception as exception:
                 logger.error(
-                    "discard() callback failed! %s: %s",
-                    type(exception).__name__, exception, exc_info=True
+                    "discard() callback failed! %s",
+                    format_exception(exception), exc_info=True
                 )
 
 

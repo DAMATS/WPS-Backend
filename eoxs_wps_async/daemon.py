@@ -43,6 +43,7 @@ from multiprocessing import Semaphore as ProcessSemaphore, Pool as ProcessPool
 import django
 from eoxserver.core import initialize as eoxs_initialize
 from eoxs_wps_async.config import get_wps_config, inet_address
+from eoxs_wps_async.util import format_exception
 from eoxs_wps_async.util.thread import ThreadSet, Queue
 from eoxs_wps_async.util.ipc import get_listener
 from eoxs_wps_async.handler import (
@@ -51,19 +52,6 @@ from eoxs_wps_async.handler import (
 )
 
 LOGGER_NAME = "eoxs_wps_async.daemon"
-
-
-def error(message, *args):
-    """ Print error message. """
-    print("ERROR: %s" % (message % args), file=stderr)
-
-
-def usage(exename):
-    """ Print simple usage. """
-    print(
-        "USAGE: %s [-a|--address <ip4addr>:<port>] <eoxs-settings-module>"
-        " [<eoxs-instance-path>]" % exename, file=stderr
-    )
 
 
 def set_stream_handler(logger, level=DEBUG):
@@ -116,8 +104,8 @@ class WorkerPoolManager(Thread):
             logger.debug("WPM: SEMAPHORE RELEASED")
             if exception:
                 logger.error(
-                    "Job execution failed! Reason: %s %s",
-                    type(exception).__name__, exception
+                    "Job execution failed! Reason: %s",
+                    format_exception(exception),
                 )
 
         while not self._stop_event.is_set():
@@ -227,11 +215,11 @@ class ConnectionHandler(Thread):
                 if self._busy_handler:
                     response = self._busy_handler()
                     self._connection.send(response)
-        except EOFError as exc:
-            logger.debug("EOF")
+        except EOFError:
+            logger.debug("EOFError")
         except OSError as exc:
             logger.error("OSError: %s", exc)
-        except Exception as exc: #pylint: disable=broad-except
+        except Exception as exc:
             logger.error("Connection failed! %s", exc, exc_info=True)
         finally:
             self._connection.close()
@@ -376,7 +364,6 @@ class Daemon():
         self.logger.info("Daemon is stopped.")
 
     def terminate(self, signum=None, frame=None):
-        # pylint: disable=unused-argument
         """ Signal handler performing graceful daemon shut-down and clean-up.
         """
         self.logger.info("Termination signal received ...")
@@ -441,7 +428,7 @@ class Daemon():
         except JobInitializationError as exc:
             # error in the user-defined process initialization
             return ("ERROR", str(exc))
-        except Exception as exc: #pylint: disable=broad-except
+        except Exception as exc:
             # error in the handler code
             error_message = "%s: %s" % (type(exc).__name__, exc)
             self.logger.error(error_message, exc_info=True)
@@ -472,8 +459,8 @@ def main(argv):
     try:
         prm = parse_argv(argv)
     except ArgvParserError as exc:
-        error(str(exc))
-        usage(basename(argv[0]))
+        print_error(str(exc))
+        print_usage(basename(argv[0]))
         return 1
 
     # configure Django settings module
@@ -509,7 +496,7 @@ def main(argv):
     elif conf.socket_file:
         family, address = "AF_UNIX", conf.socket_file
     else:
-        error("Neither address nor socket file configured!")
+        print_error("Neither address nor socket file configured!")
         return 1
 
     try:
@@ -530,6 +517,19 @@ def main(argv):
         raise
 
     return 0
+
+
+def print_error(message, *args):
+    """ Print error message. """
+    print(f"ERROR: {message % args}", file=stderr)
+
+
+def print_usage(exename):
+    """ Print simple usage. """
+    print(
+        f"USAGE: {exename} [-a|--address <ip4addr>:<port>]"
+        " <eoxs-settings-module> [<eoxs-instance-path>]", file=stderr
+    )
 
 
 class ArgvParserError(Exception):
