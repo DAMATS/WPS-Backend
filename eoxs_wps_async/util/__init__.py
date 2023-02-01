@@ -25,7 +25,25 @@
 # THE SOFTWARE.
 #-------------------------------------------------------------------------------
 
+import time
 from logging import LoggerAdapter
+
+
+class Timer:
+    """ Simple timer class. """
+
+    def __init__(self):
+        self.start = None
+        self.reset()
+
+    def reset(self):
+        """ Reset timer. """
+        self.start = time.time()
+
+    @property
+    def elapsed_time(self):
+        """ Get elapsed time. """
+        return time.time() - self.start
 
 
 def format_exception(exception):

@@ -4,7 +4,7 @@
 #
 # Authors: Martin Paces <martin.paces@eox.at>
 #-------------------------------------------------------------------------------
-# Copyright (C) 2016 EOX IT Services GmbH
+# Copyright (C) 2016-2023 EOX IT Services GmbH
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -39,7 +39,7 @@ def locked(func, lockname='_lock'):
     return _wrapper_
 
 
-class ThreadSet():
+class ThreadSet:
     """ Thread-safe set container. """
 
     def __init__(self):
@@ -63,7 +63,7 @@ class ThreadSet():
             yield item
 
 
-class Queue():
+class Queue:
     """ Simple thread-safe FIFO queue. """
 
     class Empty(Exception):
@@ -80,16 +80,16 @@ class Queue():
         self.timeout = timeout
 
     @locked
-    def put(self, item, check_size=True):
-        """ Insert item into the queue. """
+    def push(self, item, check_size=True):
+        """ Push item into the queue. """
         if check_size and len(self._items) >= self.maxsize:
             raise self.Full
         self._items.append(item)
         self._cond.notify()
 
     @locked
-    def get(self):
-        """ Get item from the queue or wait until there is one.
+    def pull(self):
+        """ Pull item from the queue or wait until there is one.
         The subroutine may raise Empty if the time-out is reached.
         """
         if not self._items:

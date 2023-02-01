@@ -4,7 +4,7 @@
 #
 # Authors: Martin Paces <martin.paces@eox.at>
 #-------------------------------------------------------------------------------
-# Copyright (C) 2016 EOX IT Services GmbH
+# Copyright (C) 2016-2023 EOX IT Services GmbH
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -28,9 +28,12 @@
 # pylint: disable=broad-except
 
 import re
+import pickle
+from datetime import datetime
 from logging import getLogger
 from os import remove, listdir
-from os.path import join, isdir, isfile
+from os.path import join, isdir, isfile, basename, getctime
+from glob import iglob
 from shutil import rmtree
 from urllib.parse import urljoin
 from eoxserver.services.ows.wps.util import InMemoryURLResolver, get_processes
@@ -57,6 +60,7 @@ def is_valid_job_id(job_id):
 
 def check_job_id(job_id):
     """ Check job id. """
+    # check that job id can be used in file-system paths
     if not is_valid_job_id(job_id):
         raise ValueError(f"Invalid job identifier {job_id!r}!")
     return job_id
@@ -314,3 +318,29 @@ def list_jobs(job_ids=None, conf=None):
             (job_id, get_job_info(job_id)) for job_id in job_ids
         ) if job_info
     ]
+
+
+def load_job(job_id):
+    """ Load saved pickled job parameters. """
+    with open(get_task_path(job_id), "rb") as fobj:
+        return pickle.load(fobj)
+
+
+def save_job(job_id, timestamp, job):
+    """ Save pickled job parameters. """
+    with open(get_task_path(job_id), "wb") as fobj:
+        pickle.dump((timestamp, job), fobj, 2)
+
+
+def list_saved_jobs():
+    """ list pickled jobs (base-name is a valid job id) and
+    sort them by ctime
+    """
+    task_path = get_wps_config().path_task
+    return sorted(
+        (datetime.utcfromtimestamp(ctime), job_id) for ctime, job_id
+        in (
+            (getctime(fname), basename(fname))
+            for fname in iglob(join(task_path, '*')) if isfile(fname)
+        ) if is_valid_job_id(job_id)
+    )
