@@ -62,9 +62,6 @@ class WorkerPoolManagerThread(Thread):
         logger - optional logger
     """
 
-    class _Break(Exception):
-        """ Break exception. """
-
     def __init__(self, handler, num_workers, num_worker_processes=None,
                  max_processed_jobs=None, timeout=1.0, logger=None):
         num_workers = max(1, num_workers)

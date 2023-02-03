@@ -217,8 +217,6 @@ def execute_job(job_id, process_id, raw_inputs, resp_form, extra_parts):
     except Exception as exception:
         logger.error("%s", format_exception(exception), exc_info=True)
 
-    return None
-
 
 def purge_job(job_id, process_id=None, logger=None):
     """ Purge the job from the system by removing all the resources

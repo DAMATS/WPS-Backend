@@ -27,7 +27,6 @@
 # pylint: disable=too-many-instance-attributes, too-many-arguments, no-self-use
 
 from logging import getLogger
-from errno import EBADF
 from signal import SIGINT, SIGTERM, signal
 from eoxs_wps_async.util.thread import Queue
 from eoxs_wps_async.util.ipc import get_listener
