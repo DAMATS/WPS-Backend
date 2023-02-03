@@ -1,6 +1,6 @@
 #-------------------------------------------------------------------------------
 #
-# Asynchronous WPS back-end - thread objects
+# Asynchronous WPS back-end - server objects
 #
 # Authors: Martin Paces <martin.paces@eox.at>
 #-------------------------------------------------------------------------------
@@ -25,6 +25,4 @@
 # THE SOFTWARE.
 #-------------------------------------------------------------------------------
 
-
-from .work_pool_manager import WorkerPoolManagerThread
-from .connection_handler import ConnectionHandlerThread
+from .daemon import Daemon

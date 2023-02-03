@@ -125,6 +125,15 @@ class WPSConfigReader(Reader):
     )
 
     @property
+    def socket_family_and_address(self):
+        """ Get socket family and address. """
+        if self.socket_address:
+            return 'AF_INET', self.socket_address
+        if self.socket_file:
+            return 'AF_UNIX', self.socket_file
+        raise NoOptionError("socket_file", self.section)
+
+    @property
     def num_worker_processes(self):
         """ Get number of worker processes. """
         try:

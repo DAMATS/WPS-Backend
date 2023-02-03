@@ -28,10 +28,10 @@
 
 from logging import getLogger
 from eoxs_wps_async.util import cached_property
-from eoxs_wps_async.config import get_wps_config
 from eoxs_wps_async.client import Client, ClientError
 from eoxs_wps_async.protocol import ClientProtocol
-from eoxs_wps_async.handler import get_response_url, get_response
+from eoxs_wps_async.protocol.handler import get_response_url, get_response
+from eoxs_wps_async.protocol.config import get_wps_config, NoOptionError
 
 LOGGER_NAME = "eoxserver.services.ows.wps"
 
@@ -109,18 +109,12 @@ class WPSAsyncBackend:
     @property
     def _client(self):
         """ Get connection to the execution daemon. """
+        try:
+            family, address = self._conf.socket_family_and_address
+        except NoOptionError:
+            raise ClientError("Neither socket file or address configured!") from None
 
-        if self._conf.socket_address:
-            family, address = 'AF_INET', self._conf.socket_address
-        elif self._conf.socket_file:
-            family, address = 'AF_UNIX', self._conf.socket_file
-        else:
-            raise ClientError("Neither address nor socket file provided!")
-
-        return Client(
-            family, address,
-            self._conf.socket_connection_timeout,
-        )
+        return Client(family, address, self._conf.socket_connection_timeout)
 
 
 # alias for backward compatibility

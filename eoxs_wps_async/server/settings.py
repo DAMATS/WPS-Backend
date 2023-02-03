@@ -1,10 +1,10 @@
 #-------------------------------------------------------------------------------
 #
-# Asynchronous WPS back-end - EOxServer extension
+# Asynchronous WPS back-end - common settings
 #
 # Authors: Martin Paces <martin.paces@eox.at>
 #-------------------------------------------------------------------------------
-# Copyright (C) 2016 EOX IT Services GmbH
+# Copyright (C) 2023 EOX IT Services GmbH
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -25,4 +25,5 @@
 # THE SOFTWARE.
 #-------------------------------------------------------------------------------
 
-__version__ = "0.5.4"
+DEFAULT_CONNECTION_TIMEOUT = 10.0 # seconds
+DEFAULT_POLL_TIMEOUT = 1.0 # seconds

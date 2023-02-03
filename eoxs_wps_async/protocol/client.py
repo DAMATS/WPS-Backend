@@ -28,11 +28,15 @@
 
 from uuid import uuid4
 from eoxserver.services.ows.wps.exceptions import ServerBusy, NoApplicableCode
-from eoxs_wps_async.handler import check_job_id, is_valid_job_id
+from .handler import check_job_id, is_valid_job_id
 
 
 class ClientProtocol:
-    """ Client side request/response protocol. """
+    """ Client side request/response protocol.
+
+    Parameters:
+        logger - logger object
+    """
 
     def __init__(self, logger):
         self.logger = logger

@@ -46,8 +46,8 @@ from eoxserver.services.ows.wps.v10.execute_util import (
 )
 
 from eoxs_wps_async.util import format_exception, fix_dir, JobLoggerAdapter
-from eoxs_wps_async.config import get_wps_config
-from eoxs_wps_async.context import Context, BaseContext, MissingContextError
+from .config import get_wps_config
+from .context import Context, BaseContext, MissingContextError
 
 LOGGER_NAME = "eoxserver.services.ows.wps"
 RE_JOB_ID = re.compile(r'^[A-Za-z0-9_][A-Za-z0-9_.-]*$')
@@ -216,9 +216,8 @@ def execute_job(job_id, process_id, raw_inputs, resp_form, extra_parts):
 
     except Exception as exception:
         logger.error("%s", format_exception(exception), exc_info=True)
-        return exception
-    else:
-        return None
+
+    return None
 
 
 def purge_job(job_id, process_id=None, logger=None):

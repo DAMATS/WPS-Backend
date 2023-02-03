@@ -28,17 +28,25 @@
 from datetime import datetime
 from collections import namedtuple
 from eoxs_wps_async.util import format_exception
-from eoxs_wps_async.handler import (
+from .handler import (
     JobInitializationError, OWS10Exception,
     check_job_id, accept_job, load_job, save_job, purge_job,
-    list_jobs, reset_job, list_saved_jobs,
+    list_jobs, reset_job, list_saved_jobs, execute_job,
 )
 
 JobEntry = namedtuple("JobEntry", ["timestamp", "process_id", "job_id"])
 
 
 class ServerProtocol:
-    """ Handling of incoming requests. """
+    """ Handling of incoming requests.
+
+    Parameters:
+        job_queue - job queue object
+        logger - logger object
+    """
+
+    class Break(Exception):
+        """ Custom break exception. """
 
     def __init__(self, job_queue, logger):
         self.job_queue = job_queue
@@ -52,14 +60,17 @@ class ServerProtocol:
         }
 
     def reload_jobs(self):
-        """ Reload saved jobs. """
+        """ Reload saved jobs enqueue them for processing. """
 
         def _equeue_job(timestamp, job_id):
             """ enqueue job ignoring the queue size limit """
             reset_job(job_id)
             # try to retrieve job details from the saved file
             timestamp, (job_id, process_id, *_) = load_job(job_id)
-            self.job_queue.push(JobEntry(timestamp, process_id, job_id))
+            self.job_queue.push(
+                JobEntry(timestamp, process_id, job_id),
+                check_size=False # ingnore queue size limits
+            )
 
         count = 0
         for timestamp, job_id in list_saved_jobs():
@@ -75,6 +86,38 @@ class ServerProtocol:
                 self.logger.debug("Enqueued job %s.", job_id)
 
         return count
+
+    def dequeue_job(self):
+        """ Dequeue job and return a callable with its parameters.
+
+        Raises ServerProtocol.Break exception if the job cannot be dequeued.
+        """
+
+        def _pull_job_id():
+            """ Dequeue next job id. """
+            try:
+                # the pull command blocks until the timeout is reached
+                job_entry = self.job_queue.pull()
+            except self.job_queue.Empty:
+                # timeout has been reached while the queue remains empty
+                raise self.Break from None
+            return job_entry.job_id
+
+        def _load_job(job_id):
+            """ Load picked job data. """
+            try:
+                _, job = load_job(job_id)
+            except Exception as error:
+                self.logger.error(
+                    "Failed to unpickle job %s! Job skipped! %s",
+                    job_id, format_exception(error), exc_info=True
+                )
+                raise self.Break from None
+            return job
+
+        job_id, *args = _load_job(_pull_job_id())
+
+        return execute_job, (job_id, *args)
 
     def handle_request(self, request):
         """ Request handler. """
