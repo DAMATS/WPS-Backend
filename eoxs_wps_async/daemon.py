@@ -35,7 +35,9 @@ import multiprocessing.util as mp_util
 import django
 from eoxserver.core import initialize as eoxs_initialize
 from eoxs_wps_async.server import Daemon
-from eoxs_wps_async.protocol.config import get_wps_config, NoOptionError
+from eoxs_wps_async.protocol.config import (
+    get_wps_config, NoOptionError, inet_address,
+)
 
 LOGGER_NAME = "eoxs_wps_async.daemon"
 
