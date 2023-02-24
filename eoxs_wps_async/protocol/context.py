@@ -235,6 +235,7 @@ class Context(PathContext):
         """ Execute user-defined callback. """
         callback = getattr(self.callbacks, name, None)
         if callback:
+            self.logger.info("Executing %s() callback ...", name)
             try:
                 callback(self, *args, **kwargs)
             except Exception as error:
@@ -242,6 +243,7 @@ class Context(PathContext):
                     "%s() callback failed! %s",
                     name, format_exception(error), exc_info=True
                 )
+            self.logger.info("... %s() callback completed.", name)
 
     @property
     def status_location(self):
