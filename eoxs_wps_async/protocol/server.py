@@ -60,10 +60,10 @@ class ServerProtocol:
         }
 
     def reload_jobs(self):
-        """ Reload saved jobs enqueue them for processing. """
+        """ Reload saved jobs and enqueue them for processing. """
 
         def _equeue_job(timestamp, job_id):
-            """ enqueue job ignoring the queue size limit """
+            """ Enqueue job ignoring the queue size limit. """
             reset_job(job_id)
             # try to retrieve job details from the saved file
             timestamp, (job_id, process_id, *_) = load_job(job_id)
