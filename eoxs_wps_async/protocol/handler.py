@@ -48,6 +48,7 @@ from eoxserver.services.ows.wps.v10.execute_util import (
 from eoxs_wps_async.util import format_exception, fix_dir, JobLoggerAdapter
 from .config import get_wps_config
 from .context import Context, BaseContext, MissingContextError
+from .decorators import db_connection
 
 LOGGER_NAME = "eoxserver.services.ows.wps"
 RE_JOB_ID = re.compile(r'^[A-Za-z0-9_][A-Za-z0-9_.-]*$')
@@ -130,6 +131,7 @@ def get_process(process_id):
     raise ValueError("Invalid process identifier {process_id!r}!")
 
 
+@db_connection
 def accept_job(job_id, process_id, raw_inputs, resp_form, extra_parts):
     """ Accept the received task. """
     check_job_id(job_id)
@@ -154,6 +156,7 @@ def accept_job(job_id, process_id, raw_inputs, resp_form, extra_parts):
             raise JobInitializationError(error_message) from None
 
 
+@db_connection
 def execute_job(job_id, process_id, raw_inputs, resp_form, extra_parts):
     """ Asynchronous process execution. """
     # A generic logger is needed to allow exception logging before
