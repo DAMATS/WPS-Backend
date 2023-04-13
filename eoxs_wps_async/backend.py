@@ -43,6 +43,8 @@ class WPSAsyncBackend:
     def execute(self, process, raw_inputs, resp_form, extra_parts=None,
                 job_id=None, version="1.0.0", **kwargs):
         """ Asynchronous process execution. """
+        if not job_id:
+            job_id = self._protocol.create_new_job_id()
         self._send_request(self._protocol.execute_request(
             job_id, process.identifier, raw_inputs, resp_form, extra_parts,
         ))

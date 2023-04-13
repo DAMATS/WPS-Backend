@@ -41,6 +41,10 @@ class ClientProtocol:
     def __init__(self, logger):
         self.logger = logger
 
+    @staticmethod
+    def create_new_job_id():
+        return str(uuid4())
+
     def handle_response(self, response, logger=None):
         """ Handle server response. """
 
@@ -66,7 +70,7 @@ class ClientProtocol:
     @classmethod
     def execute_request(cls, job_id, *payload):
         """ Get execute request. """
-        job_id = check_job_id(job_id or str(uuid4()))
+        job_id = check_job_id(job_id)
         return cls._request("EXECUTE", job_id, *payload)
 
     @classmethod
