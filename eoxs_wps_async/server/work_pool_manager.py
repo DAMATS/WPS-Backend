@@ -153,16 +153,16 @@ class WorkerPoolManagerThread(Thread):
                 format_exception(error), exc_info=True
             )
             raise self._handler.Break from None
-        self.logger.info("WPM: %d jobs running.", value)
+        self.logger.info("%d jobs running.", value)
 
     def _exit_callback(self, exception):
         """ Worker callback called on exit. """
 
         value = self.counter_applied.decrement()
-        self.logger.info("WPM: %d jobs running.", value)
+        self.logger.info("%d jobs running.", value)
 
         value = self.counter_completed.increment()
-        self.logger.info("WPM: %d jobs executed.", value)
+        self.logger.info("%d jobs executed.", value)
 
         if exception:
             self.logger.error(

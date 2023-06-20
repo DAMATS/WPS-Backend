@@ -92,8 +92,8 @@ class ServerProtocol:
 
                 count_received = self.counter_received.increment()
 
-        self.logger.info("JQ: %s jobs accepted.", self.counter_received.value)
-        self.logger.info("JQ: %s jobs queued.", len(self.job_queue))
+        self.logger.info("%d jobs accepted.", self.counter_received.value)
+        self.logger.info("%d jobs queued.", len(self.job_queue))
 
         return count
 
@@ -127,7 +127,7 @@ class ServerProtocol:
 
         job_id, *args = _load_job(_pull_job_id())
 
-        self.logger.info("JQ: %s jobs queued.", len(self.job_queue))
+        self.logger.info("%d jobs queued.", len(self.job_queue))
 
         return execute_job, (job_id, *args)
 
@@ -185,9 +185,9 @@ class ServerProtocol:
             raise
 
         value = self.counter_received.increment()
-        self.logger.info("JQ: %s jobs accepted.", value)
+        self.logger.info("%d jobs accepted.", value)
 
-        self.logger.info("JQ: %s jobs queued.", len(self.job_queue))
+        self.logger.info("%d jobs queued.", len(self.job_queue))
         return self.ok_response()
 
     def handle_purge_request(self, payload):
@@ -206,12 +206,12 @@ class ServerProtocol:
             # try to fill the blank process id from the queued item
             if process_id is None:
                 process_id = item.process_id
-        self.logger.info("JQ: %s jobs queued.", len(self.job_queue))
+        self.logger.info("%d jobs queued.", len(self.job_queue))
         # remove files and directories
         purge_job(job_id, process_id)
 
         value = self.counter_purged.increment()
-        self.logger.info("JQ: %s jobs removed.", value)
+        self.logger.info("%d jobs removed.", value)
 
         return self.ok_response()
 
