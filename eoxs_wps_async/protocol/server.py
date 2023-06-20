@@ -28,6 +28,7 @@
 from datetime import datetime
 from collections import namedtuple
 from eoxs_wps_async.util import format_exception
+from eoxs_wps_async.util.thread import Counter
 from .handler import (
     JobInitializationError, OWS10Exception,
     check_job_id, accept_job, load_job, save_job, purge_job,
@@ -58,6 +59,9 @@ class ServerProtocol:
             "LIST_QUEUE": self.handle_list_queue_request,
             "GET_QUEUE_SIZE": self.handle_get_queue_size_request,
         }
+        self.counter_received = Counter()
+        self.counter_purged = Counter()
+
 
     def reload_jobs(self):
         """ Reload saved jobs and enqueue them for processing. """
@@ -83,7 +87,13 @@ class ServerProtocol:
                 )
             else:
                 count += 1
+                self.counter_received.increment()
                 self.logger.debug("Enqueued job %s.", job_id)
+
+                count_received = self.counter_received.increment()
+
+        self.logger.info("JQ: %s jobs accepted.", self.counter_received.value)
+        self.logger.info("JQ: %s jobs queued.", len(self.job_queue))
 
         return count
 
@@ -117,6 +127,8 @@ class ServerProtocol:
 
         job_id, *args = _load_job(_pull_job_id())
 
+        self.logger.info("JQ: %s jobs queued.", len(self.job_queue))
+
         return execute_job, (job_id, *args)
 
     def handle_request(self, request):
@@ -149,7 +161,6 @@ class ServerProtocol:
 
         return response
 
-
     def handle_execute_request(self, payload):
         """ Enqueue a new job for asynchronous execution. """
         try:
@@ -172,6 +183,11 @@ class ServerProtocol:
         except:
             purge_job(job_id, process_id)
             raise
+
+        value = self.counter_received.increment()
+        self.logger.info("JQ: %s jobs accepted.", value)
+
+        self.logger.info("JQ: %s jobs queued.", len(self.job_queue))
         return self.ok_response()
 
     def handle_purge_request(self, payload):
@@ -190,8 +206,13 @@ class ServerProtocol:
             # try to fill the blank process id from the queued item
             if process_id is None:
                 process_id = item.process_id
+        self.logger.info("JQ: %s jobs queued.", len(self.job_queue))
         # remove files and directories
         purge_job(job_id, process_id)
+
+        value = self.counter_purged.increment()
+        self.logger.info("JQ: %s jobs removed.", value)
+
         return self.ok_response()
 
     def handle_list_request(self, payload):

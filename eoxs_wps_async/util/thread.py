@@ -63,6 +63,32 @@ class ThreadSet:
             yield item
 
 
+class Counter:
+    """ Thread-safe integer counter. """
+
+    def __init__(self, value=0):
+        self._lock = Lock()
+        self._value = value
+
+    @property
+    @locked
+    def value(self):
+        """ Get counter value. """
+        return self._value
+
+    @locked
+    def increment(self):
+        """ Increment counter by one. """
+        self._value += 1
+        return self._value
+
+    @locked
+    def decrement(self):
+        """ Increment counter by one. """
+        self._value -= 1
+        return self._value
+
+
 class Queue:
     """ Simple thread-safe FIFO queue. """
 

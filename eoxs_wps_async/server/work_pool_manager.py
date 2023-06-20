@@ -30,6 +30,7 @@ from signal import SIGINT, SIGTERM, signal, SIG_IGN
 from multiprocessing import Semaphore as ProcessSemaphore, Pool as ProcessPool
 from threading import Thread, Event
 from eoxs_wps_async.util import format_exception
+from eoxs_wps_async.util.thread import Counter
 
 
 def init_worker():
@@ -69,6 +70,8 @@ class WorkerPoolManagerThread(Thread):
         Thread.__init__(self)
         self.logger = logger or getLogger(__name__)
         self.timeout = timeout
+        self.counter_applied = Counter()
+        self.counter_completed = Counter()
         self._handler = handler
         self._stop_event = Event()
         self._semaphore = ProcessSemaphore(num_workers)
@@ -136,17 +139,31 @@ class WorkerPoolManagerThread(Thread):
 
     def _apply_job(self, *args):
         """ Apply job to the worker pool. """
+        value = self.counter_applied.increment()
         try:
-            self._pool.apply_async(*args, callback=self._exit_callback)
+            self._pool.apply_async(
+                *args,
+                callback=self._exit_callback,
+                error_callback=self._exit_callback,
+            )
         except Exception as error:
+            self.counter_applied.decrement()
             self.logger.error(
                 "WPM: Failed to apply asynchronous job! Job skipped! %s",
                 format_exception(error), exc_info=True
             )
             raise self._handler.Break from None
+        self.logger.info("WPM: %d jobs running.", value)
 
     def _exit_callback(self, exception):
         """ Worker callback called on exit. """
+
+        value = self.counter_applied.decrement()
+        self.logger.info("WPM: %d jobs running.", value)
+
+        value = self.counter_completed.increment()
+        self.logger.info("WPM: %d jobs executed.", value)
+
         if exception:
             self.logger.error(
                 "WPM: Job execution failed! %s",
