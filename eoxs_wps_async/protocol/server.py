@@ -90,8 +90,6 @@ class ServerProtocol:
                 self.counter_received.increment()
                 self.logger.debug("Enqueued job %s.", job_id)
 
-                count_received = self.counter_received.increment()
-
         self.logger.info("%d jobs accepted.", self.counter_received.value)
         self.logger.info("%d jobs queued.", len(self.job_queue))
 
