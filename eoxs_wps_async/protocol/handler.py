@@ -166,6 +166,7 @@ def execute_job(job_id, process_id, raw_inputs, resp_form, extra_parts):
         check_job_id(job_id)
         # Replace the generic logger with the context specific adapter.
         logger = get_job_logger(job_id, LOGGER_NAME)
+        logger.info("job execution start")
         conf = get_wps_config()
         process = get_process(process_id)
         encoder = WPS10ExecuteResponseXMLEncoder(process, resp_form, raw_inputs)
@@ -219,6 +220,8 @@ def execute_job(job_id, process_id, raw_inputs, resp_form, extra_parts):
 
     except Exception as exception:
         logger.error("%s", format_exception(exception), exc_info=True)
+    finally:
+        logger.info("job execution end")
 
 
 def purge_job(job_id, process_id=None, logger=None):
