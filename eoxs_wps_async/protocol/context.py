@@ -27,7 +27,7 @@
 
 import errno
 from logging import getLogger
-from os import makedirs, chdir, rmdir, listdir, getcwd
+from os import makedirs, chdir, rmdir, listdir
 from os.path import (
     join, isfile, isdir, exists, abspath, relpath, dirname, commonpath,
 )
@@ -80,6 +80,9 @@ class PathContext(BaseContext):
 
     The permanent storage contains the processing outputs and it keeps existing
     after the process termination.
+
+    WARNING: Use with caution with multi-threading. The current directory is
+    set per process and there is no concept of per-thread working directory.
     """
 
     def __init__(self, identifier, path_temp, path_perm, url_base, logger=None,
@@ -142,6 +145,7 @@ class PathContext(BaseContext):
             self.logger.debug("removed %s", self._path_perm)
             raise
         # assure we stay in the temporary directory
+        # (not reliable with multiple-threads)
         chdir(self._path_temp)
         self.logger.debug("directory changed to  %s", self._path_temp)
         return self
@@ -163,13 +167,6 @@ class PathContext(BaseContext):
         """ Get the workspace path. """
         return self._path_temp
 
-    def set_workspace(self):
-        """ If possible change the current directory to the workspace path. """
-        try:
-            chdir(self._path_temp) # assure we stay in the workspace
-        except FileNotFoundError:
-            raise MissingContextError("Context does not exist!") from None
-
     def publish(self, path):
         """ Publish file from the local workspace and return its path
         and public URL.
@@ -177,8 +174,7 @@ class PathContext(BaseContext):
         """
         self.logger.info("Publishing %s", path)
         try:
-            self.set_workspace()
-            workspace_path = getcwd()
+            workspace_path = self.workspace_path
             if workspace_path != commonpath([workspace_path, abspath(path)]):
                 self.logger.error("Attempt to publish a non-local file %s", path)
                 raise ContextError(
@@ -188,12 +184,12 @@ class PathContext(BaseContext):
                 self.logger.error("Attempt to publish a non-file path %s", path)
                 raise ContextError(f"Only files can be published! PATH={path}")
             # publish the file
-            target_path = join(self._path_perm, relpath(path))
-            targer_url = urljoin(self._url_base, relpath(path))
             if not isdir(self._path_perm):
                 raise MissingContextError(
                     f"Permanent directory does not exist! PATH={self._path_perm}"
                 )
+            targer_url = urljoin(self._url_base, relpath(path, workspace_path))
+            target_path = join(self._path_perm, relpath(path, workspace_path))
             if not exists(dirname(target_path)):
                 makedirs(dirname(target_path))
             move(path, target_path)
@@ -253,10 +249,13 @@ class Context(PathContext):
     def update_response(self, response):
         """ Update the stored execute response. """
         try:
-            self.set_workspace()
-            with open(self.RESPONSE_FILE, 'wb') as fobj:
-                fobj.write(self.encoder.serialize(response)[0])
-            path, url = self.publish(self.RESPONSE_FILE)
+            try:
+                response_path = join(self.workspace_path, self.RESPONSE_FILE)
+                with open(response_path, 'wb') as fobj:
+                    fobj.write(self.encoder.serialize(response)[0])
+                path, url = self.publish(response_path)
+            except FileNotFoundError:
+                raise MissingContextError("Context does not exist!") from None
         except Exception as error:
             self.logger.warning("Failed to update the WPS execute response! %s", error)
             raise
