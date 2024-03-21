@@ -96,7 +96,7 @@ class Daemon:
             job_queue=Queue(self.max_queued_jobs),
             logger=self.logger
         )
-        self.connection_handler = ConnectionListener(
+        self.connection_handler = self.ConnectionListener(
             max_connections=self.max_connections,
             connection_timeout=self.connection_timeout,
             poll_timeout=self.connection_poll_timeout,
