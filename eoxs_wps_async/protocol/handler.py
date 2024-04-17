@@ -48,7 +48,7 @@ from eoxserver.services.ows.wps.v10.execute_util import (
 from eoxs_wps_async.util import format_exception, fix_dir, JobLoggerAdapter
 from .config import get_wps_config
 from .context import Context, BaseContext, MissingContextError
-from .decorators import db_connection
+from .django_db import db_connection, reset_db_connections
 
 LOGGER_NAME = "eoxserver.services.ows.wps"
 RE_JOB_ID = re.compile(r'^[A-Za-z0-9_][A-Za-z0-9_.-]*$')
@@ -167,6 +167,8 @@ def execute_job(job_id, process_id, raw_inputs, resp_form, extra_parts):
         # Replace the generic logger with the context specific adapter.
         logger = get_job_logger(job_id, LOGGER_NAME)
         logger.info("job execution start (pid: %s)", getpid())
+        reset_db_connections()
+        logger.info("DB connections refreshed.")
         conf = get_wps_config()
         process = get_process(process_id)
         encoder = WPS10ExecuteResponseXMLEncoder(process, resp_form, raw_inputs)

@@ -26,7 +26,28 @@
 #-------------------------------------------------------------------------------
 
 from functools import wraps
-from django.db import reset_queries, close_old_connections
+from django.db import connections, reset_queries, close_old_connections
+
+
+def all_connections_closed():
+    """ Return True if all connections are closed. """
+    for connection in connections.all():
+        if connection.connection:
+            return False
+    return True
+
+
+def close_connections():
+    """ Force close of all opened DB connections """
+    connections.close_all()
+
+
+def reset_db_connections():
+    """ Reset all DB connections. """
+    for connection in connections.all():
+        connection.close()
+        connection.connect()
+        connection.connection.cursor().close()
 
 
 def db_connection(func):
@@ -35,11 +56,12 @@ def db_connection(func):
     """
     @wraps(func)
     def _db_connection_wrapper_(*args, **kwargs):
-        close_old_connections()
+        #close_old_connections()
+        close_connections()
         reset_queries()
         try:
             return func(*args, **kwargs)
         finally:
             reset_queries()
-            close_old_connections()
+            close_connections()
     return _db_connection_wrapper_
