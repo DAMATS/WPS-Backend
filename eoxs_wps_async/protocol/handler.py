@@ -31,7 +31,7 @@ import re
 import pickle
 from datetime import datetime
 from logging import getLogger
-from os import remove, listdir
+from os import remove, listdir, getpid
 from os.path import join, isdir, isfile, basename, getctime
 from glob import iglob
 from shutil import rmtree
@@ -166,7 +166,7 @@ def execute_job(job_id, process_id, raw_inputs, resp_form, extra_parts):
         check_job_id(job_id)
         # Replace the generic logger with the context specific adapter.
         logger = get_job_logger(job_id, LOGGER_NAME)
-        logger.info("job execution start")
+        logger.info("job execution start (pid: %s)", getpid())
         conf = get_wps_config()
         process = get_process(process_id)
         encoder = WPS10ExecuteResponseXMLEncoder(process, resp_form, raw_inputs)
@@ -221,7 +221,7 @@ def execute_job(job_id, process_id, raw_inputs, resp_form, extra_parts):
     except Exception as exception:
         logger.error("%s", format_exception(exception), exc_info=True)
     finally:
-        logger.info("job execution end")
+        logger.info("job execution end (pid: %s)", getpid())
 
 
 def purge_job(job_id, process_id=None, logger=None):
