@@ -48,7 +48,7 @@ DEF_NUMBER_OF_WORKERS = 1
 DEF_MAX_QUEUED_JOBS = 64
 
 # default number of processed jobs before worker restarts
-DEF_MAX_NUMBER_OF_PROCESSED_JOBS = 1
+DEF_MAX_NUMBER_OF_PROCESSED_JOBS = None
 
 
 def positive_int(value):

@@ -60,7 +60,7 @@ class Daemon:
 
     def __init__(self, socket_family, socket_address, max_connections=64,
                  connection_timeout=10, poll_timeout=1, num_workers=1,
-                 num_worker_processes=2, max_processed_jobs=1,
+                 num_worker_processes=2, max_processed_jobs=None,
                  max_queued_jobs=8, logger=None):
 
         self.logger = logger or getLogger(__name__)
