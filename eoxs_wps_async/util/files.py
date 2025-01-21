@@ -41,7 +41,7 @@ def copy_with_temp_file(src, dst, *, follow_symlinks=True):
     tmp_dst = f"{dst}.tmp"
     try:
         copy2(src, tmp_dst, follow_symlinks=follow_symlinks)
-        rename(tmp_dst, src)
+        rename(tmp_dst, dst)
     except:
         try:
             remove(tmp_dst)
