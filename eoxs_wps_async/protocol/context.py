@@ -4,7 +4,7 @@
 #
 # Authors: Martin Paces <martin.paces@eox.at>
 #-------------------------------------------------------------------------------
-# Copyright (C) 2016 EOX IT Services GmbH
+# Copyright (C) 2016-2025 EOX IT Services GmbH
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -37,6 +37,7 @@ from eoxserver.services.ows.wps.context import (
     BaseContext as BaseWpsContext, ContextError,
 )
 from eoxs_wps_async.util import format_exception
+from eoxs_wps_async.util.files import copy_with_temp_file
 
 LOGGER_NAME = "eoxserver.services.ows.wps"
 
@@ -192,7 +193,7 @@ class PathContext(BaseContext):
             target_path = join(self._path_perm, relpath(path, workspace_path))
             if not exists(dirname(target_path)):
                 makedirs(dirname(target_path))
-            move(path, target_path)
+            move(path, target_path, copy_function=copy_with_temp_file)
         except Exception as error:
             self.logger.warning("Failed to publish %s! %s", path, error)
             raise
