@@ -26,6 +26,8 @@
 #-------------------------------------------------------------------------------
 
 import errno
+import uuid
+import shutil
 from logging import getLogger
 from os import makedirs, chdir, rmdir, listdir
 from os.path import (
@@ -35,6 +37,9 @@ from shutil import move, rmtree
 from urllib.parse import urljoin
 from eoxserver.services.ows.wps.context import (
     BaseContext as BaseWpsContext, ContextError,
+)
+from eoxserver.services.ows.wps.parameters import (
+    ComplexData, Reference, InputReference,
 )
 from eoxs_wps_async.util import format_exception
 from eoxs_wps_async.util.files import copy_with_temp_file
@@ -175,22 +180,13 @@ class PathContext(BaseContext):
         """
         self.logger.info("Publishing %s", path)
         try:
-            workspace_path = self.workspace_path
-            if workspace_path != commonpath([workspace_path, abspath(path)]):
-                self.logger.error("Attempt to publish a non-local file %s", path)
-                raise ContextError(
-                    f"Only local workspace files can be published! PATH={path}"
-                )
+            if not exists(path):
+                self.logger.error("Attempt to publish a non-existent file path %s", path)
+                raise ContextError(f"Only existing files can be published! PATH={path}")
             if not isfile(path):
                 self.logger.error("Attempt to publish a non-file path %s", path)
                 raise ContextError(f"Only files can be published! PATH={path}")
-            # publish the file
-            if not isdir(self._path_perm):
-                raise MissingContextError(
-                    f"Permanent directory does not exist! PATH={self._path_perm}"
-                )
-            targer_url = urljoin(self._url_base, relpath(path, workspace_path))
-            target_path = join(self._path_perm, relpath(path, workspace_path))
+            target_path, target_url = self._get_target_path_and_url(path)
             if not exists(dirname(target_path)):
                 makedirs(dirname(target_path))
             move(path, target_path, copy_function=copy_with_temp_file)
@@ -198,6 +194,21 @@ class PathContext(BaseContext):
             self.logger.warning("Failed to publish %s! %s", path, error)
             raise
         self.logger.debug("moved %s -> %s", path, target_path)
+        return target_path, target_url
+
+    def _get_target_path_and_url(self, path):
+        workspace_path = self.workspace_path
+        if workspace_path != commonpath([workspace_path, abspath(path)]):
+            self.logger.error("Attempt to publish a non-local file %s", path)
+            raise ContextError(
+                f"Only local workspace files can be published! PATH={path}"
+            )
+        if not isdir(self._path_perm):
+            raise MissingContextError(
+                f"Permanent directory does not exist! PATH={self._path_perm}"
+            )
+        targer_url = urljoin(self._url_base, relpath(path, workspace_path))
+        target_path = join(self._path_perm, relpath(path, workspace_path))
         return target_path, targer_url
 
 
@@ -228,6 +239,9 @@ class Context(PathContext):
         self.callbacks = callbacks
         self._progress = 0
 
+        # add input sanitizer
+        self.encoder.add_input_sanitizer(self._publish_input)
+
     def _callback(self, name, *args, **kwargs):
         """ Execute user-defined callback. """
         callback = getattr(self.callbacks, name, None)
@@ -249,11 +263,18 @@ class Context(PathContext):
 
     def update_response(self, response):
         """ Update the stored execute response. """
+
+        def serialize_response(response):
+            serialized_response, _ = self.encoder.serialize(
+                response, allow_multipart_response=False
+            )
+            return serialized_response
+
         try:
             try:
                 response_path = join(self.workspace_path, self.RESPONSE_FILE)
                 with open(response_path, 'wb') as fobj:
-                    fobj.write(self.encoder.serialize(response)[0])
+                    fobj.write(serialize_response(response))
                 path, url = self.publish(response_path)
             except FileNotFoundError:
                 raise MissingContextError("Context does not exist!") from None
@@ -262,6 +283,65 @@ class Context(PathContext):
             raise
         self.logger.debug("Response updated.")
         return path, url
+
+    def _publish_outputs(self, outputs):
+        """ Store complex-data outputs as a file references. """
+
+        def _fix_output(result, prm, req):
+            if isinstance(prm, ComplexData) and not isinstance(result, Reference):
+                format_ = prm.get_format(result.mime_type, result.encoding, result.schema)
+                if not format_:
+                    raise ValueError("Invalid output format!")
+                # write data to a workspace file
+                file_path = join(
+                    self.workspace_path,
+                    f"{uuid.uuid4()}{format_.file_extension}"
+                )
+                data, _ = prm.encode_raw(result)
+                with open(file_path, "wb") as file:
+                    shutil.copyfileobj(data, file)
+                # publish the created data file and keep a reference to it
+                result = Reference(
+                    *self.publish(file_path),
+                    mime_type=result.mime_type,
+                    encoding=result.encoding,
+                    schema=result.schema,
+                )
+            return result, prm, req
+
+        return {
+            identifier: _fix_output(result, prm, req)
+            for identifier, (result, prm, req) in outputs.items()
+        }
+
+    def _publish_input(self, data, prm, raw_input):
+        """ Store complex-data input which cannot be embedded into XML
+        as file references.
+        """
+        if isinstance(prm, ComplexData):
+            if isinstance(raw_input, InputReference) and raw_input.href.startswith("cid:"):
+                format_ = prm.get_format(
+                    raw_input.mime_type, raw_input.encoding, raw_input.schema
+                )
+                if not format_:
+                    raise ValueError("Invalid input format!")
+                file_path = join(
+                    self.workspace_path,
+                    f"{uuid.uuid3(uuid.NAMESPACE_URL, raw_input.href)}"
+                    f"{format_.file_extension}"
+                )
+                public_path, public_url = self._get_target_path_and_url(file_path)
+                if not exists(public_path):
+                    with open(file_path, "wb") as file:
+                        file.write(raw_input.data)
+                    self.publish(file_path)
+                data = Reference(
+                    public_path, public_url,
+                    mime_type=raw_input.mime_type,
+                    encoding=raw_input.encoding,
+                    schema=raw_input.schema,
+                )
+        return data, prm, raw_input
 
     def set_accepted(self):
         """ Set the StatusAccepted stored response.
@@ -275,6 +355,7 @@ class Context(PathContext):
         """
         self.logger.info("status: SUCCEEDED")
         self._callback('on_succeeded', outputs)
+        outputs = self._publish_outputs(outputs)
         return self.update_response(self.encoder.encode_response(outputs))
 
     def set_failed(self, exception):

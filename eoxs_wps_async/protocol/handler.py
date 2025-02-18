@@ -132,8 +132,9 @@ def get_process(process_id):
 
 
 @db_connection
-def accept_job(job_id, process_id, raw_inputs, resp_form, extra_parts):
+def accept_job(job_id, process_id, raw_inputs, resp_form, *args):
     """ Accept the received task. """
+    del args
     check_job_id(job_id)
     conf = get_wps_config()
     logger = get_job_logger(job_id, LOGGER_NAME)
@@ -146,7 +147,7 @@ def accept_job(job_id, process_id, raw_inputs, resp_form, extra_parts):
         try:
             # optional process initialization
             if hasattr(process, 'initialize'):
-                process.initialize(context, raw_inputs, resp_form, extra_parts)
+                process.initialize(context, raw_inputs, resp_form, None) # TODO: remove the last parameters after the transition
             context.set_accepted()
         except OWS10Exception:
             raise
@@ -157,8 +158,9 @@ def accept_job(job_id, process_id, raw_inputs, resp_form, extra_parts):
 
 
 @db_connection
-def execute_job(job_id, process_id, raw_inputs, resp_form, extra_parts):
+def execute_job(job_id, process_id, raw_inputs, resp_form, *args):
     """ Asynchronous process execution. """
+    del args
     # A generic logger is needed to allow exception logging before
     # the context specific logger adapter is created.
     logger = getLogger(LOGGER_NAME)
@@ -187,8 +189,7 @@ def execute_job(job_id, process_id, raw_inputs, resp_form, extra_parts):
                 inputs = {"context": context}
                 inputs.update(decode_output_requests(resp_form, output_defs))
                 inputs.update(decode_raw_inputs(
-                    raw_inputs, input_defs,
-                    InMemoryURLResolver(extra_parts, logger)
+                    raw_inputs, input_defs, InMemoryURLResolver(logger=logger)
                 ))
 
                 # execute the process
